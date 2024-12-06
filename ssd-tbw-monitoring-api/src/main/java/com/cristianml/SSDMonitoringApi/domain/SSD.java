@@ -24,6 +24,7 @@ public class SSD {
     @Column(nullable = false, unique = true)
     private String model;
 
+    @Column(name = "capacity_gb", nullable = false)
     private Long capacityGB;
 
     @Column(nullable = false)

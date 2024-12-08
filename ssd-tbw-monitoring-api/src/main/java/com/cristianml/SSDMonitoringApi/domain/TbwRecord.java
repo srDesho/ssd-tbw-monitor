@@ -12,12 +12,12 @@ import java.time.LocalDate;
 @AllArgsConstructor
 
 @Entity
-@Table(name = "tbw_records", uniqueConstraints = @UniqueConstraint(columnNames = {"fecha", "ssd_id"}))
+@Table(name = "tbw_records", uniqueConstraints = @UniqueConstraint(columnNames = {"date", "ssd_id"}))
 public class TbwRecord {
 
-    @jakarta.persistence.Id
+    @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long Id;
+    private Long id;
 
     @ManyToOne
     @JoinColumn(name = "ssd_id", nullable = false)

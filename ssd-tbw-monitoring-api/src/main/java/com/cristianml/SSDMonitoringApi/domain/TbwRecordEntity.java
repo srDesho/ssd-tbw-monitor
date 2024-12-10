@@ -13,7 +13,7 @@ import java.time.LocalDate;
 
 @Entity
 @Table(name = "tbw_records", uniqueConstraints = @UniqueConstraint(columnNames = {"date", "ssd_id"}))
-public class TbwRecord {
+public class TbwRecordEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -21,7 +21,7 @@ public class TbwRecord {
 
     @ManyToOne
     @JoinColumn(name = "ssd_id", nullable = false)
-    private SSD ssd;
+    private SSDEntity ssd;
 
     @Column(nullable = false)
     private LocalDate date;

@@ -15,7 +15,7 @@ import java.util.List;
 
 @Entity
 @Table(name = "ssds")
-public class SSD {
+public class SSDEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,6 +32,6 @@ public class SSD {
 
     @OneToMany(mappedBy = "ssd", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
-    private List<TbwRecord> records = new ArrayList<>();
+    private List<TbwRecordEntity> records = new ArrayList<>();
 
 }

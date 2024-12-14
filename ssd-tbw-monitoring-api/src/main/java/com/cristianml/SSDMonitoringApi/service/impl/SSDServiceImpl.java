@@ -4,10 +4,12 @@ import com.cristianml.SSDMonitoringApi.domain.SSDEntity;
 import com.cristianml.SSDMonitoringApi.repository.SSDRepository;
 import com.cristianml.SSDMonitoringApi.service.ISSDService;
 import lombok.Builder;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Service
 public class SSDServiceImpl implements ISSDService {
 
     private final SSDRepository ssdRepository;

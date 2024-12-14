@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 
 @Setter
 @Getter
@@ -25,6 +26,9 @@ public class TbwRecordEntity {
 
     @Column(nullable = false)
     private LocalDate date;
+
+    @Column(nullable = false)
+    private LocalTime time;
 
     @Column(nullable = false)
     private Long tbw; // in GB

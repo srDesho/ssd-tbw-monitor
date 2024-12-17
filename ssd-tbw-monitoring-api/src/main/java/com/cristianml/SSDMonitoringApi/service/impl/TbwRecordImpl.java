@@ -14,6 +14,9 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
+// This class manages the business logic for TBW (Total Bytes Written) records.
+// It provides methods to retrieve, auto-register, and manually register TBW entries for SSDs.
+
 @Service
 public class TbwRecordImpl implements ITbwRecord {
 
@@ -21,76 +24,84 @@ public class TbwRecordImpl implements ITbwRecord {
     private final SSDRepository ssdRepository;
     private final IHardwareService hardwareService;
 
-    // Hour defined to automatic register
+    // Predefined time for automatic TBW registration.
     private final LocalTime autoRegisterTime = LocalTime.of(17, 0);
 
+    // Constructor that initializes the dependencies.
     public TbwRecordImpl(TbwRecordRepository tbwRecordRepository, SSDRepository ssdRepository, IHardwareService hardwareService) {
         this.tbwRecordRepository = tbwRecordRepository;
         this.ssdRepository = ssdRepository;
         this.hardwareService = hardwareService;
     }
 
+    // Retrieves all TBW records from the database.
     @Override
     public List<TbwRecordEntity> findAll() {
         return this.tbwRecordRepository.findAll();
     }
 
+    // Automatically registers TBW records for all SSDs if certain time conditions are met.
     @Override
     public void autoRegisterTBW() {
         LocalDateTime now = LocalDateTime.now();
         LocalDate currentDate = LocalDate.now();
-        LocalTime currentTime= LocalTime.now();
+        LocalTime currentTime = LocalTime.now();
         LocalDateTime configuredDateTime = LocalDateTime.of(currentDate, this.autoRegisterTime);
 
-        // If is before than configured time
+        // Skip registration if the current time is before the configured auto-register time.
         if (now.isBefore(configuredDateTime)) {
             return;
         }
 
-        // If midnight of the next day
+        // Skip registration if the current time is after midnight of the next day.
         LocalDate nextDay = currentDate.plusDays(1);
-        LocalDateTime starOfNextDay = LocalDateTime.of(nextDay, LocalTime.MIDNIGHT);
-        if (now.isAfter(starOfNextDay)) {
+        LocalDateTime startOfNextDay = LocalDateTime.of(nextDay, LocalTime.MIDNIGHT);
+        if (now.isAfter(startOfNextDay)) {
             return;
         }
 
-        // findAll ssd registers
+        // Retrieves all SSDs from the repository.
         List<SSDEntity> ssdList = ssdRepository.findAll();
 
+        // For each SSD, checks if a record exists for the current date. If not, creates a new record.
         for (SSDEntity ssd : ssdList) {
-            // Verify if exists a register with current date
             Optional<TbwRecordEntity> existingRecord = tbwRecordRepository.findBySsdAndDate(ssd, currentDate);
 
             if (existingRecord.isEmpty()) {
-                // Register TBW with current time
                 registerTBW(ssd, currentDate, currentTime);
             }
         }
     }
 
+    // Manually registers a TBW record for a specific SSD and date.
     @Override
     public TbwRecordEntity manualRegisterTBW(Long ssdId, LocalDate date, LocalTime time, Long tbw) {
-        // Get SSD existing
+        // Retrieves the SSD entity by ID, or throws an exception if not found.
         SSDEntity ssd = ssdRepository.findById(ssdId)
                 .orElseThrow(() -> new IllegalArgumentException("SSD with id " + ssdId + " not found"));
 
-        // Verify if already exists a register with date and ssd.
+        // Checks if a record already exists for the given SSD and date.
         Optional<TbwRecordEntity> existingRecord = this.tbwRecordRepository.findBySsdAndDate(ssd, date);
         if (existingRecord.isPresent()) {
             throw new IllegalArgumentException("A record already exists for this SSD on this date.");
         }
 
+        // Saves the TBW record and returns it.
         return saveTbwRecord(ssd, date, time, tbw);
     }
 
+    // Registers a TBW record for a given SSD, retrieving the current TBW value from the hardware service.
     private TbwRecordEntity registerTBW(SSDEntity ssd, LocalDate date, LocalTime time) {
-        // Get current TBW
+        // Retrieves the TBW value for the given SSD model from the hardware service.
         Long tbw = this.hardwareService.getTBW(ssd.getModel());
 
+        // Saves the TBW record.
         return saveTbwRecord(ssd, date, time, tbw);
     }
 
+    // Saves a TBW record to the repository with the provided SSD, date, time, and TBW value.
     private TbwRecordEntity saveTbwRecord(SSDEntity ssd, LocalDate date, LocalTime time, Long tbw) {
+        // Builds a new TBW record entity with the provided details.
         TbwRecordEntity tbwRecord = TbwRecordEntity.builder()
                 .ssd(ssd)
                 .date(date)
@@ -98,7 +109,7 @@ public class TbwRecordImpl implements ITbwRecord {
                 .tbw(tbw)
                 .build();
 
+        // Persists the TBW record to the database and returns it.
         return this.tbwRecordRepository.save(tbwRecord);
     }
-
 }

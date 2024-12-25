@@ -2,6 +2,8 @@ package com.cristianml.SSDMonitoringApi.service.impl;
 
 import com.cristianml.SSDMonitoringApi.domain.SSDEntity;
 import com.cristianml.SSDMonitoringApi.domain.TbwRecordEntity;
+import com.cristianml.SSDMonitoringApi.dto.response.TbwRecordResponseDTO;
+import com.cristianml.SSDMonitoringApi.mapper.TbwRecordMapper;
 import com.cristianml.SSDMonitoringApi.repository.SSDRepository;
 import com.cristianml.SSDMonitoringApi.repository.TbwRecordRepository;
 import com.cristianml.SSDMonitoringApi.service.IHardwareService;
@@ -23,21 +25,23 @@ public class TbwRecordImpl implements ITbwRecord {
     private final TbwRecordRepository tbwRecordRepository;
     private final SSDRepository ssdRepository;
     private final IHardwareService hardwareService;
+    private final TbwRecordMapper tbwRecordMapper;
 
     // Predefined time for automatic TBW registration.
     private final LocalTime autoRegisterTime = LocalTime.of(17, 0);
 
     // Constructor that initializes the dependencies.
-    public TbwRecordImpl(TbwRecordRepository tbwRecordRepository, SSDRepository ssdRepository, IHardwareService hardwareService) {
+    public TbwRecordImpl(TbwRecordRepository tbwRecordRepository, SSDRepository ssdRepository, IHardwareService hardwareService, TbwRecordMapper tbwRecordMapper) {
         this.tbwRecordRepository = tbwRecordRepository;
         this.ssdRepository = ssdRepository;
         this.hardwareService = hardwareService;
+        this.tbwRecordMapper = tbwRecordMapper;
     }
 
     // Retrieves all TBW records from the database.
     @Override
-    public List<TbwRecordEntity> findAll() {
-        return this.tbwRecordRepository.findAll();
+    public List<TbwRecordResponseDTO> findAll() {
+        return this.tbwRecordMapper.tbwRecordResponseDTOList(this.tbwRecordRepository.findAll());
     }
 
     // Automatically registers TBW records for all SSDs if certain time conditions are met.
@@ -75,7 +79,7 @@ public class TbwRecordImpl implements ITbwRecord {
 
     // Manually registers a TBW record for a specific SSD and date.
     @Override
-    public TbwRecordEntity manualRegisterTBW(Long ssdId, LocalDate date, LocalTime time, Long tbw) {
+    public TbwRecordResponseDTO manualRegisterTBW(Long ssdId, LocalDate date, LocalTime time, Long tbw) {
         // Retrieves the SSD entity by ID, or throws an exception if not found.
         SSDEntity ssd = ssdRepository.findById(ssdId)
                 .orElseThrow(() -> new IllegalArgumentException("SSD with id " + ssdId + " not found"));
@@ -87,7 +91,7 @@ public class TbwRecordImpl implements ITbwRecord {
         }
 
         // Saves the TBW record and returns it.
-        return saveTbwRecord(ssd, date, time, tbw);
+        return this.tbwRecordMapper.toResponseDTO(saveTbwRecord(ssd, date, time, tbw));
     }
 
     // Registers a TBW record for a given SSD, retrieving the current TBW value from the hardware service.

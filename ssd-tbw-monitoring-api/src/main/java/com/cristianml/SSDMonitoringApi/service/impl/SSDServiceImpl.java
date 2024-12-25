@@ -1,6 +1,8 @@
 package com.cristianml.SSDMonitoringApi.service.impl;
 
 import com.cristianml.SSDMonitoringApi.domain.SSDEntity;
+import com.cristianml.SSDMonitoringApi.dto.response.SSDResponseDTO;
+import com.cristianml.SSDMonitoringApi.mapper.SSDMapper;
 import com.cristianml.SSDMonitoringApi.repository.SSDRepository;
 import com.cristianml.SSDMonitoringApi.service.ISSDService;
 import lombok.Builder;
@@ -15,10 +17,12 @@ import java.util.List;
 @Service
 public class SSDServiceImpl implements ISSDService {
 
+    private final SSDMapper ssdMapper;
     private final SSDRepository ssdRepository;
 
     // Constructor that initializes the SSDRepository dependency.
-    public SSDServiceImpl(SSDRepository ssdRepository) {
+    public SSDServiceImpl(SSDMapper ssdMapper, SSDRepository ssdRepository) {
+        this.ssdMapper = ssdMapper;
         this.ssdRepository = ssdRepository;
     }
 
@@ -30,7 +34,7 @@ public class SSDServiceImpl implements ISSDService {
 
     // Registers a new SSD after ensuring the model is not already registered.
     @Override
-    public SSDEntity registerSsd(String model, Long capacity) {
+    public SSDResponseDTO registerSsd(String model, Long capacity) {
         // Validates if the SSD model already exists.
         if (this.ssdRepository.existsByModel(model)) {
             throw new IllegalArgumentException("SDD already registered.");
@@ -44,6 +48,6 @@ public class SSDServiceImpl implements ISSDService {
                 .build();
 
         // Saves the newly created SSD to the database.
-        return this.ssdRepository.save(ssd);
+        return ssdMapper.toResponseDTO(this.ssdRepository.save(ssd));
     }
 }

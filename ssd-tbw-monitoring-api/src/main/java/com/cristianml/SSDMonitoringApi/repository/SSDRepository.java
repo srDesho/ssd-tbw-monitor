@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface SSDRepository extends JpaRepository<SSDEntity, Long> {
 
+    SSDEntity save(SSDEntity ssdEntity);
     SSDEntity findByModel(String model);
     boolean existsByModel(String model);
 

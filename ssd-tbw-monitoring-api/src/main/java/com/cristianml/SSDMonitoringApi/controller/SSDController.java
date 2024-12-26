@@ -20,8 +20,8 @@ public class SSDController {
     private final SSDServiceImpl ssdService;
 
     @GetMapping
-    public ResponseEntity<List<SSDEntity>> getAllSSDs() {
-        List<SSDEntity> ssdEntityList = this.ssdService.findAll();
+    public ResponseEntity<List<SSDResponseDTO>> getAllSSDs() {
+        List<SSDResponseDTO> ssdEntityList = this.ssdService.findAll();
         return ResponseEntity.ok(ssdEntityList);
     }
 

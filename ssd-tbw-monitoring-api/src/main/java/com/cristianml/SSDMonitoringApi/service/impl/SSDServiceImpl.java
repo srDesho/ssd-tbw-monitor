@@ -28,8 +28,9 @@ public class SSDServiceImpl implements ISSDService {
 
     // Retrieves all SSD records from the database.
     @Override
-    public List<SSDEntity> findAll() {
-        return ssdRepository.findAll();
+    public List<SSDResponseDTO> findAll() {
+        List<SSDEntity> ssdEntityList = ssdRepository.findAll();
+        return ssdMapper.toSSDResponseDTOList(ssdEntityList);
     }
 
     // Registers a new SSD after ensuring the model is not already registered.

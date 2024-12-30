@@ -18,7 +18,7 @@ public class TbwRecordMapper {
         return modelMapper.map(tbwRecord, TbwRecordResponseDTO.class);
     }
 
-    public List<TbwRecordResponseDTO> tbwRecordResponseDTOList(List<TbwRecordEntity> tbwRecordList) {
+    public List<TbwRecordResponseDTO> toTbwRecordResponseDTOList(List<TbwRecordEntity> tbwRecordList) {
         return tbwRecordList.stream()
                 .map(this::toResponseDTO)
                 .toList();

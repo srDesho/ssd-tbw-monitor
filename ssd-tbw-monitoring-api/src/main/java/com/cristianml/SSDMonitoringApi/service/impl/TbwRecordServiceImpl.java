@@ -20,7 +20,7 @@ import java.util.Optional;
 // It provides methods to retrieve, auto-register, and manually register TBW entries for SSDs.
 
 @Service
-public class TbwRecordImpl implements ITbwRecord {
+public class TbwRecordServiceImpl implements ITbwRecord {
 
     private final TbwRecordRepository tbwRecordRepository;
     private final SSDRepository ssdRepository;
@@ -31,7 +31,7 @@ public class TbwRecordImpl implements ITbwRecord {
     private final LocalTime autoRegisterTime = LocalTime.of(17, 0);
 
     // Constructor that initializes the dependencies.
-    public TbwRecordImpl(TbwRecordRepository tbwRecordRepository, SSDRepository ssdRepository, IHardwareService hardwareService, TbwRecordMapper tbwRecordMapper) {
+    public TbwRecordServiceImpl(TbwRecordRepository tbwRecordRepository, SSDRepository ssdRepository, IHardwareService hardwareService, TbwRecordMapper tbwRecordMapper) {
         this.tbwRecordRepository = tbwRecordRepository;
         this.ssdRepository = ssdRepository;
         this.hardwareService = hardwareService;
@@ -41,7 +41,7 @@ public class TbwRecordImpl implements ITbwRecord {
     // Retrieves all TBW records from the database.
     @Override
     public List<TbwRecordResponseDTO> findAll() {
-        return this.tbwRecordMapper.tbwRecordResponseDTOList(this.tbwRecordRepository.findAll());
+        return this.tbwRecordMapper.toTbwRecordResponseDTOList((this.tbwRecordRepository.findAll()));
     }
 
     // Automatically registers TBW records for all SSDs if certain time conditions are met.

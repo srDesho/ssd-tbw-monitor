@@ -11,6 +11,7 @@ import java.util.Optional;
 @Repository
 public interface TbwRecordRepository extends JpaRepository<TbwRecordEntity, Long> {
 
+    TbwRecordEntity save(TbwRecordEntity tbwRecord);
     Optional<TbwRecordEntity> findBySsdAndDate(SSDEntity ssd, LocalDate date);
 
 }

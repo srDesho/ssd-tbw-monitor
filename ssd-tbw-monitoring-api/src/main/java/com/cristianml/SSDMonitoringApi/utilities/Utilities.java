@@ -2,8 +2,9 @@ package com.cristianml.SSDMonitoringApi.utilities;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -47,5 +48,14 @@ public class Utilities {
             return new ResponseEntity<Object>(map, status);
         }
     }
+
+    //  Date Formatter
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("d/M/yyyy, HH:mm");
+
+    public static String formatLocalDateTime(LocalDateTime dateTime) {
+        return dateTime.format(FORMATTER);
+    }
+
+    // Formats the current date and time into a readable format.
 
 }

@@ -19,7 +19,6 @@ public class SSDMapper {
     public SSDResponseDTO toResponseDTO(SSDEntity ssdEntity) {
         SSDResponseDTO ssdResponseDTO = modelMapper.map(ssdEntity, SSDResponseDTO.class);
         ssdResponseDTO.setFormattedDateTime(Utilities.formatLocalDateTime(ssdEntity.getRegistrationDate()));
-        System.out.println("###################################" + ssdResponseDTO.getFormattedDateTime());
         return ssdResponseDTO;
     }
 

@@ -1,5 +1,6 @@
 package com.cristianml.SSDMonitoringApi.service.impl;
 
+import com.cristianml.SSDMonitoringApi.dto.response.SSDResponseDTO;
 import com.cristianml.SSDMonitoringApi.service.IHardwareService;
 import org.springframework.stereotype.Service;
 import oshi.SystemInfo;
@@ -8,6 +9,7 @@ import oshi.hardware.HardwareAbstractionLayer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 // This class provides methods to interact with hardware information such as retrieving TBW (Total Bytes Written), disk capacity, and available SSD models.
 // The OSHI library is used to extract hardware details from the system.
@@ -56,5 +58,22 @@ public class HardwareServiceImpl implements IHardwareService {
             }
         }
         throw new IllegalArgumentException("No disk found with specified model: " + diskModel);
+    }
+
+    // Detect SSDs
+    @Override
+    public List<SSDResponseDTO> detectSSDs() {
+        SystemInfo si = new SystemInfo();
+        HardwareAbstractionLayer hal = si.getHardware();
+        List<HWDiskStore> diskStores = hal.getDiskStores();
+
+        // Filter disks that are SSDs
+        return diskStores.stream()
+                .filter(disk -> disk.getModel() != null && disk.getModel().toLowerCase().contains("ssd"))
+                .map(disk -> SSDResponseDTO.builder()
+                        .model(disk.getModel())
+                        .capacityGB(disk.getSize() / (1024 * 1024 * 1024))
+                        .build())
+                .collect(Collectors.toList());
     }
 }

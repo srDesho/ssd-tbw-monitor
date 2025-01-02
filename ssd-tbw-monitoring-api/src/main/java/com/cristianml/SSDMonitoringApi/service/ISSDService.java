@@ -8,5 +8,6 @@ import java.util.List;
 public interface ISSDService {
 
     List<SSDResponseDTO> findAll();
-    SSDResponseDTO registerSsd(String model, Long capacity);
+    void detectAndRegisterSsd();
+    void toggleMonitoring(Long id, boolean monitor);
 }

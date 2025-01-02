@@ -3,6 +3,7 @@ package com.cristianml.SSDMonitoringApi.controller;
 import com.cristianml.SSDMonitoringApi.domain.SSDEntity;
 import com.cristianml.SSDMonitoringApi.dto.request.SSDRequestDTO;
 import com.cristianml.SSDMonitoringApi.dto.response.SSDResponseDTO;
+import com.cristianml.SSDMonitoringApi.service.impl.HardwareServiceImpl;
 import com.cristianml.SSDMonitoringApi.service.impl.SSDServiceImpl;
 import com.cristianml.SSDMonitoringApi.utilities.Utilities;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import java.util.List;
 public class SSDController {
 
     private final SSDServiceImpl ssdService;
+    private final HardwareServiceImpl hardwareService;
 
     @GetMapping
     public ResponseEntity<List<SSDResponseDTO>> getAllSSDs() {
@@ -25,9 +27,21 @@ public class SSDController {
         return ResponseEntity.ok(ssdEntityList);
     }
 
-    @PostMapping
-    public ResponseEntity<Object> registerSSD(@RequestBody SSDRequestDTO request) {
-        SSDResponseDTO ssdResponseDTO = this.ssdService.registerSsd(request.getModel(), request.getCapacityGB());
-        return Utilities.generateResponse(HttpStatus.CREATED, "SSD created successfully.");
+    @GetMapping("/detect")
+    public ResponseEntity<List<SSDResponseDTO>> detectSSDs() {
+        List<SSDResponseDTO> detectedSSDs = this.hardwareService.detectSSDs();
+        return ResponseEntity.ok(detectedSSDs);
+    }
+
+    @PostMapping("/detect-and-register")
+    public ResponseEntity<Object> detectAndRegisterSSD() {
+        this.ssdService.detectAndRegisterSsd();
+        return Utilities.generateResponse(HttpStatus.OK, "Register Successfully.");
+    }
+
+    @PatchMapping("/{id}/monitor")
+    public ResponseEntity<Object> toggleMonitoring(@PathVariable long id, @RequestParam("monitor") boolean monitor) {
+        this.ssdService.toggleMonitoring(id, monitor);
+        return Utilities.generateResponse(HttpStatus.OK, "SSD Monitoring status updated successfully.");
     }
 }

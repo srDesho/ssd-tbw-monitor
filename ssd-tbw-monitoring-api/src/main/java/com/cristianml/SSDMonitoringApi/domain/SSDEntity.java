@@ -30,6 +30,9 @@ public class SSDEntity {
     @Column(nullable = false)
     private LocalDateTime registrationDate;
 
+    @Column(name = "is_monitored", nullable = false)
+    private Boolean isMonitored;
+
     @OneToMany(mappedBy = "ssd", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<TbwRecordEntity> records = new ArrayList<>();

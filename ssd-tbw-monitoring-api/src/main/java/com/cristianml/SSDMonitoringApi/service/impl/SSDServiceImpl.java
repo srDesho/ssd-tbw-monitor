@@ -55,7 +55,7 @@ public class SSDServiceImpl implements ISSDService {
 
             // Creates a new SSD entity with the given model, capacity, and registration date.
             SSDEntity ssdEntity = SSDEntity.builder()
-                    .model(ssd.getModel())
+                    .model(ssd.getModel().split("\\(")[0].trim())
                     .capacityGB(ssd.getCapacityGB())
                     .registrationDate(now)
                     .isMonitored(false)

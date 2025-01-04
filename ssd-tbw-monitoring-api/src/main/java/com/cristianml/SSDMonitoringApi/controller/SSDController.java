@@ -1,10 +1,13 @@
 package com.cristianml.SSDMonitoringApi.controller;
 
 import com.cristianml.SSDMonitoringApi.domain.SSDEntity;
+import com.cristianml.SSDMonitoringApi.domain.TbwRecordEntity;
 import com.cristianml.SSDMonitoringApi.dto.request.SSDRequestDTO;
 import com.cristianml.SSDMonitoringApi.dto.response.SSDResponseDTO;
+import com.cristianml.SSDMonitoringApi.dto.response.TbwRecordResponseDTO;
 import com.cristianml.SSDMonitoringApi.service.impl.HardwareServiceImpl;
 import com.cristianml.SSDMonitoringApi.service.impl.SSDServiceImpl;
+import com.cristianml.SSDMonitoringApi.service.impl.TbwRecordServiceImpl;
 import com.cristianml.SSDMonitoringApi.utilities.Utilities;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,6 +23,7 @@ public class SSDController {
 
     private final SSDServiceImpl ssdService;
     private final HardwareServiceImpl hardwareService;
+    private final TbwRecordServiceImpl tbwRecordService;
 
     @GetMapping
     public ResponseEntity<List<SSDResponseDTO>> getAllSSDs() {
@@ -43,5 +47,13 @@ public class SSDController {
     public ResponseEntity<Object> toggleMonitoring(@PathVariable long id, @RequestParam("monitor") boolean monitor) {
         this.ssdService.toggleMonitoring(id, monitor);
         return Utilities.generateResponse(HttpStatus.OK, "SSD Monitoring status updated successfully.");
+    }
+
+    @GetMapping("/all")
+    public ResponseEntity<List<TbwRecordResponseDTO>> all() {
+        this.ssdService.detectAndRegisterSsd();
+        this.tbwRecordService.autoRegisterTBW();
+        List<TbwRecordResponseDTO> tbwRecordResponseDTO = this.tbwRecordService.findAll();
+        return ResponseEntity.ok(tbwRecordResponseDTO);
     }
 }

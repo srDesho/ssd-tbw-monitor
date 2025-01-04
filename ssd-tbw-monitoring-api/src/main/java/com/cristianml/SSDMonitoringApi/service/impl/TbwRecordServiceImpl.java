@@ -28,7 +28,7 @@ public class TbwRecordServiceImpl implements ITbwRecord {
     private final TbwRecordMapper tbwRecordMapper;
 
     // Predefined time for automatic TBW registration.
-    private final LocalTime autoRegisterTime = LocalTime.of(17, 0);
+    private final LocalTime autoRegisterTime = LocalTime.of(16, 0);
 
     // Constructor that initializes the dependencies.
     public TbwRecordServiceImpl(TbwRecordRepository tbwRecordRepository, SSDRepository ssdRepository, IHardwareService hardwareService, TbwRecordMapper tbwRecordMapper) {

@@ -6,10 +6,8 @@ import java.util.List;
 
 public interface IHardwareService {
 
-    long getTBW(String diskModel);
-    List<String> getAvailableSSDs();
-    long getDiskCapacity(String diskModel);
+    List<SSDResponseDTO> detectSSDsUsingSmartctl();
+    long getTBWFromSMART(String deviceName);
 
-    List<SSDResponseDTO> detectSSDs();
 
 }

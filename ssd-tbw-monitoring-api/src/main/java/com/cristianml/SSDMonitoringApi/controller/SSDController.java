@@ -33,7 +33,7 @@ public class SSDController {
 
     @GetMapping("/detect")
     public ResponseEntity<List<SSDResponseDTO>> detectSSDs() {
-        List<SSDResponseDTO> detectedSSDs = this.hardwareService.detectSSDs();
+        List<SSDResponseDTO> detectedSSDs = this.hardwareService.detectSSDsUsingSmartctl();
         return ResponseEntity.ok(detectedSSDs);
     }
 

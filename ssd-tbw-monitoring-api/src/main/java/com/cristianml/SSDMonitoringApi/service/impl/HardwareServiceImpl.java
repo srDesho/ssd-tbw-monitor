@@ -1,176 +1,178 @@
 package com.cristianml.SSDMonitoringApi.service.impl;
 
 import com.cristianml.SSDMonitoringApi.dto.response.SSDResponseDTO;
+import com.cristianml.SSDMonitoringApi.repository.SSDRepository;
+import com.cristianml.SSDMonitoringApi.repository.TbwRecordRepository;
 import com.cristianml.SSDMonitoringApi.service.IHardwareService;
+import com.cristianml.SSDMonitoringApi.utilities.Utilities;
 import org.springframework.stereotype.Service;
-import oshi.SystemInfo;
-import oshi.hardware.HWDiskStore;
-import oshi.hardware.HardwareAbstractionLayer;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
-/**
- * Implementation of the Hardware Service interface that provides methods to interact with storage devices.
- * Uses OSHI library for hardware abstraction and SMART commands for detailed SSD metrics.
- */
+// Implementation of the hardware service, which allows detecting the connected SSD devices and obtaining the Total Bytes Written (TBW) value of a specific model.
+// The Total Bytes Written (TBW) value of a specific model. This service uses the command “smartctl”
+// command to interact with the disks and retrieve the necessary information. It is part of the business layer in the
+// architecture.
+
 @Service
 public class HardwareServiceImpl implements IHardwareService {
 
-    /**
-     * Retrieves the Total Bytes Written (TBW) for a specified disk model.
-     * Converts raw bytes to gigabytes for standardized reporting.
-     *
-     * @param diskModel The model name of the disk to query
-     * @return Total bytes written in GB
-     * @throws IllegalArgumentException if no disk matches the specified model
-     */
-    @Override
-    public long getTBW(String diskModel) {
-        SystemInfo si = new SystemInfo();
-        HardwareAbstractionLayer hal = si.getHardware();
+    private final SSDRepository ssdRepository;
+    private final TbwRecordRepository tbwRecordRepository;
 
-        for (HWDiskStore disk : hal.getDiskStores()) {
-            if ((disk.getModel().split("\\(")[0].trim()).equalsIgnoreCase(diskModel)) {
-
-                System.out.println("Serial Number ::::::::::::: " + disk.getSerial());
-                System.out.println("Disk Name ::::::::::::: " + disk.getName());
-                System.out.println("Model ::::::::::::: " + disk.getModel());
-                System.out.println("Disk Size (bytes) ::::::::::::: " + disk.getSize());
-                System.out.println("Write Bytes ::::::::::::: " + disk.getWriteBytes());
-                System.out.println("Writes ::::::::::::: " + disk.getWrites());
-                System.out.println("Current Queue Length ::::::::::::: " + disk.getCurrentQueueLength());
-                System.out.println("Partitions ::::::::::::: " + disk.getPartitions());
-                System.out.println("Read Bytes ::::::::::::: " + disk.getReadBytes());
-                System.out.println("Reads ::::::::::::: " + disk.getReads());
-                System.out.println("Timestamp ::::::::::::: " + disk.getTimeStamp());
-                System.out.println("Transfer Time ::::::::::::: " + disk.getTransferTime());
-                System.out.println("Class Information ::::::::::::: " + disk.getClass());
-
-
-                long writeBytes = disk.getWriteBytes() / 1_000_000_000L;
-                System.out.println(writeBytes);
-                long roundedToThousands = (writeBytes / 1000) * 1000; // Redondeamos al valor más cercano en miles
-                System.out.println("==================" + disk.getModel() + " ************* + " + roundedToThousands);
-                System.out.println("OSHI Write Bytes: " + disk.getWriteBytes() + " Writtes: " + disk.getWrites());
-
-                return getTBWFromSMART("/dev/sda");
-            }
-        }
-        throw new IllegalArgumentException("No disk found with specified model: " + diskModel);
+    // Constructor to inject the necessary dependencies for accessing SSD and TBW data repositories
+    public HardwareServiceImpl(SSDRepository ssdRepository, TbwRecordRepository tbwRecordRepository) {
+        this.ssdRepository = ssdRepository;
+        this.tbwRecordRepository = tbwRecordRepository;
     }
 
     /**
-     * Retrieves a list of available SSDs in the system.
-     * Filters storage devices to include only those identified as SSDs.
+     * Detects all connected SSD devices using the `smartctl --scan` command, then retrieves
+     * additional device details such as the model and capacity using the `smartctl -i` command.
+     * The information is then returned as a list of SSDResponseDTO objects.
      *
-     * @return List of SSD model names
+     * @return a list of SSDResponseDTO containing the details of the detected SSDs
      */
     @Override
-    public List<String> getAvailableSSDs() {
-        SystemInfo si = new SystemInfo();
-        HardwareAbstractionLayer hal = si.getHardware();
-        List<String> ssdModels = new ArrayList<>();
-
-        for (HWDiskStore disk : hal.getDiskStores()) {
-            if (disk.getModel() != null && disk.getModel().toLowerCase().contains("ssd")) {
-                ssdModels.add(disk.getModel());
-            }
-        }
-        return ssdModels;
-    }
-
-    /**
-     * Retrieves the capacity of a specified disk model in gigabytes.
-     *
-     * @param diskModel The model name of the disk to query
-     * @return Disk capacity in GB
-     * @throws IllegalArgumentException if no disk matches the specified model
-     */
-    @Override
-    public long getDiskCapacity(String diskModel) {
-        SystemInfo si = new SystemInfo();
-        HardwareAbstractionLayer hal = si.getHardware();
-
-        for (HWDiskStore disk : hal.getDiskStores()) {
-            if (disk.getModel().equalsIgnoreCase(diskModel)) {
-                return disk.getSize() / (1000 * 1000 * 1000); // Convert to GB
-            }
-        }
-        throw new IllegalArgumentException("No disk found with specified model: " + diskModel);
-    }
-
-    /**
-     * Detects and retrieves information about all SSDs in the system.
-     * Builds a comprehensive DTO containing model and capacity information.
-     *
-     * @return List of SSDResponseDTO containing details of each detected SSD
-     */
-    @Override
-    public List<SSDResponseDTO> detectSSDs() {
-        SystemInfo si = new SystemInfo();
-        HardwareAbstractionLayer hal = si.getHardware();
-        List<HWDiskStore> diskStores = hal.getDiskStores();
-
-        return diskStores.stream()
-                .filter(disk -> disk.getModel() != null && disk.getModel().toLowerCase().contains("ssd"))
-                .map(disk -> SSDResponseDTO.builder()
-                        .model(disk.getModel())
-                        .capacityGB(disk.getSize() / (1024 * 1024 * 1024))
-                        .build())
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Retrieves Total Bytes Written using SMART attributes.
-     * Executes smartctl command to get SMART data and extracts the Data Units Written value.
-     * Converts the raw value to gigabytes using appropriate scaling factors.
-     *
-     * @param diskName The device name to query (e.g., "/dev/sda")
-     * @return Total bytes written in GB, or 0 if the data cannot be retrieved
-     */
-    public long getTBWFromSMART(String diskName) {
+    public List<SSDResponseDTO> detectSSDsUsingSmartctl() {
+        List<SSDResponseDTO> detectedSSDs = new ArrayList<>();
         try {
-            ProcessBuilder builder = new ProcessBuilder(
-                    "smartctl",
-                    "-A",           // Get SMART attributes
-                    "-d", "nvme",   // Specify NVMe device type
-                    diskName
-            );
+            // Executes the "smartctl --scan" command to get the list of connected devices
+            Process process = Runtime.getRuntime().exec("smartctl --scan");
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
 
-            builder.redirectErrorStream(true);
-            Process process = builder.start();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                // Each line contains information like "/dev/sdX -d <driver> ..."
+                String[] parts = line.split(" ");
+                if (parts.length > 0) {
+                    String device = parts[0]; // Example: /dev/sda
+                    System.out.println("DEVICE = " + device);
 
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    System.out.println("SMART Output: " + line); // Debug output
-                    if (line.contains("Data Units Written")) {
-                        // Extract value from "Data Units Written" field
-                        String value = line.substring(line.indexOf(":") + 1, line.indexOf("[")).trim();
-                        value = value.split(" ")[0].replace(",", ""); // Clean the value
-                        long dataUnitsWritten = Long.parseLong(value);
+                    // Executes "smartctl -i" to get information about the device
+                    Process infoProcess = Runtime.getRuntime().exec("smartctl -i " + device);
+                    BufferedReader infoReader = new BufferedReader(new InputStreamReader(infoProcess.getInputStream()));
 
-                        // Each "Data Unit" equals 512 KB, convert to GB
-                        double totalBytesWritten = dataUnitsWritten * 512 * 931.4; // 512 KB = 512 * 1024 bytes
-                        long totalGigabytesWritten = (long) totalBytesWritten / (1000 * 1000 * 1000); // Convert to GB
+                    String model = null;
+                    String capacity = null;
+                    while ((line = infoReader.readLine()) != null) {
+                        if (line.contains("Model Family:") || line.contains("Model Number:")) {
+                            model = line.split(":")[1].trim();
+                            System.out.println("MODEL = " + model);
+                        }
+                        if (line.contains("Namespace 1 Formatted LBA Size:")) {
+                            capacity = line.split(":")[1].trim().split(" ")[0]; // Extracts the capacity in GB
+                            System.out.println("CAPACITY = " + capacity);
+                        }
+                    }
 
-                        return totalGigabytesWritten;
+                    // If both model and capacity are found, add them to the DTO list
+                    if (model != null && capacity != null) {
+                        detectedSSDs.add(SSDResponseDTO.builder()
+                                .model(model)
+                                .capacityGB(Long.parseLong(capacity))
+                                .registrationDate(LocalDateTime.now())  // Set the current date for registration
+                                .formattedDateTime(Utilities.formatLocalDateTime(LocalDateTime.now())) // Format the date
+                                .build());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Error detecting SSDs using smartctl", e);
+        }
+
+        return detectedSSDs;
+    }
+
+    /**
+     * Retrieves the Total Bytes Written (TBW) value for a given SSD model.
+     * It searches for the device using `smartctl --scan`, matches the device based on the provided model,
+     * and then executes the "smartctl -A" command to retrieve the TBW data.
+     *
+     * @param ssdModel the model of the SSD for which the TBW is to be retrieved
+     * @return the TBW value in GB
+     */
+    @Override
+    public long getTBWFromSMART(String ssdModel) {
+        try {
+            // Step 1: Execute the "smartctl --scan" to get the list of connected devices
+            Process scanProcess = Runtime.getRuntime().exec("smartctl --scan");
+            BufferedReader scanReader = new BufferedReader(new InputStreamReader(scanProcess.getInputStream()));
+
+            String line;
+            String matchingDevice = null;
+
+            // Step 2: Search for the device that matches the model
+            while ((line = scanReader.readLine()) != null) {
+                String[] parts = line.split(" ");
+                System.out.println("SCAN LINE: " + line);
+                if (parts.length > 0) {
+                    String device = parts[0]; // Example: "/dev/sda"
+                    System.out.println("DEVICE: " + device);
+
+                    // Execute "smartctl -i" to retrieve device information
+                    Process infoProcess = Runtime.getRuntime().exec("smartctl -i " + device);
+                    BufferedReader infoReader = new BufferedReader(new InputStreamReader(infoProcess.getInputStream()));
+
+                    String model = null;
+                    while ((line = infoReader.readLine()) != null) {
+                        if (line.contains("Model Family:") || line.contains("Model Number:")) {
+                            model = line.split(":")[1].trim();
+                            break; // No need to continue reading if we already have the model
+                        }
+                    }
+
+                    // If the model matches, store the device path
+                    if (model != null && model.equalsIgnoreCase(ssdModel)) {
+                        matchingDevice = device;
+                        System.out.println("MATCHING DEVICE: " + device);
+                        break;
                     }
                 }
             }
 
-            int exitCode = process.waitFor();
+            // If no matching device is found, throw an exception
+            if (matchingDevice == null) {
+                throw new IllegalArgumentException("No device found with model: " + ssdModel);
+            }
+
+            // Step 3: Execute "smartctl -A" to get the TBW value for the matched device
+            ProcessBuilder builder = new ProcessBuilder(
+                    "smartctl",
+                    "-A",
+                    matchingDevice
+            );
+
+            builder.redirectErrorStream(true);
+            Process tbwProcess = builder.start();
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(tbwProcess.getInputStream()))) {
+                while ((line = reader.readLine()) != null) {
+                    if (line.contains("Data Units Written")) {
+                        String value = line.split(":")[1].trim().split(" ")[0].replace(",", "");
+                        long dataUnitsWritten = Long.parseLong(value);
+
+                        // Convert data units to GB
+                        long totalBytesWritten = (long) (dataUnitsWritten * 512 * 931.4); // 512 KB * 1024 bytes
+                        return totalBytesWritten / (1000 * 1000 * 1000); // Convert to GB
+                    }
+                }
+            }
+
+            int exitCode = tbwProcess.waitFor();
             if (exitCode != 0) {
-                System.err.println("smartctl failed with exit code: " + exitCode + " for disk: " + diskName);
+                throw new RuntimeException("smartctl failed with exit code: " + exitCode + " for device: " + matchingDevice);
             }
         } catch (Exception e) {
-            System.err.println("Error executing smartctl: " + e.getMessage());
-            e.printStackTrace();
+            throw new RuntimeException("Error executing smartctl for model " + ssdModel, e);
         }
+
         return 0;
     }
+
 }

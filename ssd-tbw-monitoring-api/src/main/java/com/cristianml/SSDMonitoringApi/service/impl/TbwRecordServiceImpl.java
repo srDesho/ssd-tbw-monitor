@@ -8,6 +8,8 @@ import com.cristianml.SSDMonitoringApi.repository.SSDRepository;
 import com.cristianml.SSDMonitoringApi.repository.TbwRecordRepository;
 import com.cristianml.SSDMonitoringApi.service.IHardwareService;
 import com.cristianml.SSDMonitoringApi.service.ITbwRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -16,21 +18,25 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
-// This class manages the business logic for TBW (Total Bytes Written) records.
-// It provides methods to retrieve, auto-register, and manually register TBW entries for SSDs.
-
+// This class implements the business logic for managing TBW (Total Bytes Written) records.
+// It includes methods to retrieve, automatically register, and manually register TBW entries for SSDs.
+// Additionally, it handles time-based logic for auto-registering TBW records.
 @Service
 public class TbwRecordServiceImpl implements ITbwRecord {
 
+    // Repositories and mappers used for database access and data transformation.
     private final TbwRecordRepository tbwRecordRepository;
     private final SSDRepository ssdRepository;
     private final IHardwareService hardwareService;
     private final TbwRecordMapper tbwRecordMapper;
 
+    // Logger for logging important information.
+    private static final Logger logger = LoggerFactory.getLogger(TbwRecordServiceImpl.class);
+
     // Predefined time for automatic TBW registration.
     private final LocalTime autoRegisterTime = LocalTime.of(16, 0);
 
-    // Constructor that initializes the dependencies.
+    // Constructor for dependency injection.
     public TbwRecordServiceImpl(TbwRecordRepository tbwRecordRepository, SSDRepository ssdRepository, IHardwareService hardwareService, TbwRecordMapper tbwRecordMapper) {
         this.tbwRecordRepository = tbwRecordRepository;
         this.ssdRepository = ssdRepository;
@@ -38,7 +44,7 @@ public class TbwRecordServiceImpl implements ITbwRecord {
         this.tbwRecordMapper = tbwRecordMapper;
     }
 
-    // Retrieves all TBW records from the database.
+    // Retrieves all TBW records from the database and maps them to response DTOs.
     @Override
     public List<TbwRecordResponseDTO> findAll() {
         return this.tbwRecordMapper.toTbwRecordResponseDTOList((this.tbwRecordRepository.findAll()));
@@ -52,6 +58,8 @@ public class TbwRecordServiceImpl implements ITbwRecord {
         LocalTime currentTime = LocalTime.now();
         LocalDateTime configuredDateTime = LocalDateTime.of(currentDate, this.autoRegisterTime);
 
+        logger.info("Executing autoRegisterTBW...");
+
         // Skip registration if the current time is before the configured auto-register time.
         if (now.isBefore(configuredDateTime)) {
             return;
@@ -64,10 +72,10 @@ public class TbwRecordServiceImpl implements ITbwRecord {
             return;
         }
 
-        // Retrieves all SSDs from the repository.
+        // Retrieve all SSDs from the repository.
         List<SSDEntity> ssdList = ssdRepository.findAll();
 
-        // For each SSD, checks if a record exists for the current date. If not, creates a new record.
+        // For each SSD, check if a record exists for the current date. If not, create a new record.
         for (SSDEntity ssd : ssdList) {
             Optional<TbwRecordEntity> existingRecord = tbwRecordRepository.findBySsdAndDate(ssd, currentDate);
 
@@ -80,32 +88,32 @@ public class TbwRecordServiceImpl implements ITbwRecord {
     // Manually registers a TBW record for a specific SSD and date.
     @Override
     public TbwRecordResponseDTO manualRegisterTBW(Long ssdId, LocalDate date, LocalTime time, Long tbw) {
-        // Retrieves the SSD entity by ID, or throws an exception if not found.
+        // Retrieve the SSD entity by ID, or throw an exception if not found.
         SSDEntity ssd = ssdRepository.findById(ssdId)
                 .orElseThrow(() -> new IllegalArgumentException("SSD with id " + ssdId + " not found"));
 
-        // Checks if a record already exists for the given SSD and date.
+        // Check if a record already exists for the given SSD and date.
         Optional<TbwRecordEntity> existingRecord = this.tbwRecordRepository.findBySsdAndDate(ssd, date);
         if (existingRecord.isPresent()) {
             throw new IllegalArgumentException("A record already exists for this SSD on this date.");
         }
 
-        // Saves the TBW record and returns it.
+        // Save the TBW record and return it.
         return this.tbwRecordMapper.toResponseDTO(saveTbwRecord(ssd, date, time, tbw));
     }
 
     // Registers a TBW record for a given SSD, retrieving the current TBW value from the hardware service.
     private TbwRecordEntity registerTBW(SSDEntity ssd, LocalDate date, LocalTime time) {
-        // Retrieves the TBW value for the given SSD model from the hardware service.
-        Long tbw = this.hardwareService.getTBW(ssd.getModel());
+        // Retrieve the TBW value for the given SSD model from the hardware service.
+        Long tbw = this.hardwareService.getTBWFromSMART(ssd.getModel());
 
-        // Saves the TBW record.
+        // Save the TBW record.
         return saveTbwRecord(ssd, date, time, tbw);
     }
 
     // Saves a TBW record to the repository with the provided SSD, date, time, and TBW value.
     private TbwRecordEntity saveTbwRecord(SSDEntity ssd, LocalDate date, LocalTime time, Long tbw) {
-        // Builds a new TBW record entity with the provided details.
+        // Build a new TBW record entity with the provided details.
         TbwRecordEntity tbwRecord = TbwRecordEntity.builder()
                 .ssd(ssd)
                 .date(date)
@@ -113,7 +121,7 @@ public class TbwRecordServiceImpl implements ITbwRecord {
                 .tbw(tbw)
                 .build();
 
-        // Persists the TBW record to the database and returns it.
+        // Persist the TBW record to the database and return it.
         return this.tbwRecordRepository.save(tbwRecord);
     }
 }

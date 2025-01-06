@@ -6,70 +6,70 @@ import com.cristianml.SSDMonitoringApi.mapper.SSDMapper;
 import com.cristianml.SSDMonitoringApi.repository.SSDRepository;
 import com.cristianml.SSDMonitoringApi.service.IHardwareService;
 import com.cristianml.SSDMonitoringApi.service.ISSDService;
-import com.cristianml.SSDMonitoringApi.utilities.Utilities;
-import lombok.Builder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-// This class handles the business logic for managing SSDs (Solid State Drives).
-// It provides methods to retrieve all SSDs and register new SSDs with validation.
-
+// This class implements the business logic for managing SSDs.
+// It provides methods to detect, register, retrieve, and manage monitoring status for SSD entities.
 @Service
 public class SSDServiceImpl implements ISSDService {
 
+    // Dependencies used for mapping, database access, and hardware operations.
     private final SSDMapper ssdMapper;
     private final SSDRepository ssdRepository;
     private final IHardwareService hardwareService;
 
-    // Constructor that initializes the SSDRepository dependency.
+    // Constructor for dependency injection.
     public SSDServiceImpl(SSDMapper ssdMapper, SSDRepository ssdRepository, IHardwareService hardwareService) {
         this.ssdMapper = ssdMapper;
         this.ssdRepository = ssdRepository;
         this.hardwareService = hardwareService;
     }
 
-    // Retrieves all SSD records from the database.
+    // Retrieves all SSD entities from the database and maps them to response DTOs.
     @Override
     public List<SSDResponseDTO> findAll() {
         List<SSDEntity> ssdEntityList = ssdRepository.findAll();
         return ssdMapper.toSSDResponseDTOList(ssdEntityList);
     }
 
-    // Registers a new SSD after ensuring the model is not already registered.
+    // Detects SSDs using hardware services and registers them if they are not already in the database.
     @Override
     public void detectAndRegisterSsd() {
-        List<SSDResponseDTO> ssdDetectes = this.hardwareService.detectSSDs();
+        // Detect SSDs using the hardware service.
+        List<SSDResponseDTO> detectedSSDs = hardwareService.detectSSDsUsingSmartctl();
 
-        for (SSDResponseDTO ssd : ssdDetectes) {
-            // Validates if the SSD model already exists.
+        for (SSDResponseDTO ssd : detectedSSDs) {
+            // Check if the SSD is already registered.
             if (this.ssdRepository.existsByModel(ssd.getModel())) {
-                throw new IllegalArgumentException("SDD already registered.");
+                throw new IllegalArgumentException("SSD already registered.");
             }
 
-            // Formats the current date and time into a readable format.
+            // Get the current date and time.
             LocalDateTime now = LocalDateTime.now();
-            String formattedDate = Utilities.formatLocalDateTime(now);
 
-            // Creates a new SSD entity with the given model, capacity, and registration date.
+            // Build a new SSD entity and save it to the database.
             SSDEntity ssdEntity = SSDEntity.builder()
-                    .model(ssd.getModel().split("\\(")[0].trim())
+                    .model(ssd.getModel())
                     .capacityGB(ssd.getCapacityGB())
                     .registrationDate(now)
                     .isMonitored(false)
                     .build();
 
-            // Saves the newly created SSD to the database.
+            // Save the entity and map it to a response DTO.
             ssdMapper.toResponseDTO(this.ssdRepository.save(ssdEntity));
         }
-
     }
 
+    // Toggles the monitoring status of a specific SSD by its ID.
     @Override
     public void toggleMonitoring(Long id, boolean monitor) {
+        // Retrieve the SSD entity by its ID or throw an exception if not found.
         SSDEntity ssd = ssdRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("SSD Not found."));
+
+        // Update the monitoring status and save the entity.
         ssd.setIsMonitored(monitor);
         this.ssdRepository.save(ssd);
     }

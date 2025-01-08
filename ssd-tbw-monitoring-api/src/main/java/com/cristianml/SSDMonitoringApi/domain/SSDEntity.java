@@ -24,6 +24,9 @@ public class SSDEntity {
     @Column(nullable = false, unique = true)
     private String model;
 
+    @Column(nullable = false, unique = true)
+    private String serial;
+
     @Column(name = "capacity_gb", nullable = false)
     private Long capacityGB;
 

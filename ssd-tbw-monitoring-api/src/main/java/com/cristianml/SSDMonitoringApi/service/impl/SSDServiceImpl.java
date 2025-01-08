@@ -43,7 +43,7 @@ public class SSDServiceImpl implements ISSDService {
 
         for (SSDResponseDTO ssd : detectedSSDs) {
             // Check if the SSD is already registered.
-            if (this.ssdRepository.existsByModel(ssd.getModel())) {
+            if (this.ssdRepository.existsByModelAndSerial(ssd.getModel(), ssd.getSerial())) {
                 throw new IllegalArgumentException("SSD already registered.");
             }
 
@@ -53,6 +53,7 @@ public class SSDServiceImpl implements ISSDService {
             // Build a new SSD entity and save it to the database.
             SSDEntity ssdEntity = SSDEntity.builder()
                     .model(ssd.getModel())
+                    .serial(ssd.getSerial())
                     .capacityGB(ssd.getCapacityGB())
                     .registrationDate(now)
                     .isMonitored(false)

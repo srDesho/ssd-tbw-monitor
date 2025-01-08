@@ -19,6 +19,7 @@ public class SSDResponseDTO {
 
     private Long id;
     private String model;
+    private String serial;
     private Long capacityGB;
     private LocalDateTime registrationDate;
     private String formattedDateTime;

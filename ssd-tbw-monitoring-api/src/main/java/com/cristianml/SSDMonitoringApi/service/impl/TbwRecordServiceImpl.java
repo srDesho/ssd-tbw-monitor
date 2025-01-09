@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -47,42 +46,40 @@ public class TbwRecordServiceImpl implements ITbwRecord {
     // Retrieves all TBW records from the database and maps them to response DTOs.
     @Override
     public List<TbwRecordResponseDTO> findAll() {
-        return this.tbwRecordMapper.toTbwRecordResponseDTOList((this.tbwRecordRepository.findAll()));
+        return this.tbwRecordMapper.toTbwRecordResponseDTOList(this.tbwRecordRepository.findAll());
     }
 
     // Automatically registers TBW records for all SSDs if certain time conditions are met.
     @Override
-    public void autoRegisterTBW() {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDate currentDate = LocalDate.now();
-        LocalTime currentTime = LocalTime.now();
-        LocalDateTime configuredDateTime = LocalDateTime.of(currentDate, this.autoRegisterTime);
-
+    public boolean autoRegisterTBW() {
         logger.info("Executing autoRegisterTBW...");
 
-        // Skip registration if the current time is before the configured auto-register time.
-        if (now.isBefore(configuredDateTime)) {
-            return;
+        LocalDate currentDate = LocalDate.now();
+        LocalTime currentTime = LocalTime.now();
+
+        // Checks if the TBW has already been registered for the current day.
+        List<SSDEntity> ssdList = ssdRepository.findByIsMonitored(true);
+        boolean alreadyRegistered = ssdList.stream()
+                .anyMatch(ssd -> tbwRecordRepository.findBySsdAndDate(ssd, currentDate).isPresent());
+
+        if (alreadyRegistered) {
+            logger.info("TBW already registered for today.");
+            return true; // Indicates that TBW is already registered.
         }
 
-        // Skip registration if the current time is after midnight of the next day.
-        LocalDate nextDay = currentDate.plusDays(1);
-        LocalDateTime startOfNextDay = LocalDateTime.of(nextDay, LocalTime.MIDNIGHT);
-        if (now.isAfter(startOfNextDay)) {
-            return;
-        }
-
-        // Retrieve all SSDs from the repository.
-        List<SSDEntity> ssdList = ssdRepository.findAll();
-
-        // For each SSD, check if a record exists for the current date. If not, create a new record.
+        // Registers TBW for monitored SSDs.
+        logger.info("Registering TBW for monitored SSDs...");
         for (SSDEntity ssd : ssdList) {
             Optional<TbwRecordEntity> existingRecord = tbwRecordRepository.findBySsdAndDate(ssd, currentDate);
 
             if (existingRecord.isEmpty()) {
+                logger.info("Registering TBW for SSD: {}", ssd.getModel());
                 registerTBW(ssd, currentDate, currentTime);
+                return true; // Indicates that TBW was successfully registered.
             }
         }
+
+        return false; // Indicates that TBW was not registered.
     }
 
     // Manually registers a TBW record for a specific SSD and date.

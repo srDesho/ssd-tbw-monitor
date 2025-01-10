@@ -41,7 +41,7 @@ public class HardwareServiceImpl implements IHardwareService {
     public List<SSDResponseDTO> detectSSDsUsingSmartctl() {
         List<SSDResponseDTO> detectedSSDs = new ArrayList<>();
         try {
-            // Executes the "smartctl --scan" command to get the list of connected devices
+            // Executes the "smartctl --scan" command to get the list of connected devices.
             Process process = Runtime.getRuntime().exec("smartctl --scan");
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
 
@@ -53,37 +53,41 @@ public class HardwareServiceImpl implements IHardwareService {
                     String device = parts[0]; // Example: /dev/sda
                     System.out.println("DEVICE = " + device);
 
-                    // Executes "smartctl -i" to get information about the device
-                    Process infoProcess = Runtime.getRuntime().exec("smartctl -i " + device);
-                    BufferedReader infoReader = new BufferedReader(new InputStreamReader(infoProcess.getInputStream()));
+                    try {
+                        // Executes "smartctl -i" to get information about the device.
+                        Process infoProcess = Runtime.getRuntime().exec("smartctl -i " + device);
+                        BufferedReader infoReader = new BufferedReader(new InputStreamReader(infoProcess.getInputStream()));
 
-                    String model = null;
-                    String serial = null;
-                    String capacity = null;
-                    while ((line = infoReader.readLine()) != null) {
-                        if (line.contains("Model Family:") || line.contains("Model Number:")) {
-                            model = line.split(":")[1].trim();
-                            System.out.println("MODEL = " + model);
-                        }
-                        if (line.contains("Serial Number:")) {
-                            serial = line.split(":")[1].trim();
+                        String model = null;
+                        String serial = null;
+                        String capacity = null;
+                        while ((line = infoReader.readLine()) != null) {
+                            if (line.contains("Model Family:") || line.contains("Model Number:")) {
+                                model = line.split(":")[1].trim();
+                                System.out.println("MODEL = " + model);
+                            }
+                            if (line.contains("Serial Number:")) {
+                                serial = line.split(":")[1].trim();
+                            }
+                            if (line.contains("Namespace 1 Formatted LBA Size:")) {
+                                capacity = line.split(":")[1].trim().split(" ")[0]; // Extracts the capacity in GB.
+                                System.out.println("CAPACITY = " + capacity);
+                            }
                         }
 
-                        if (line.contains("Namespace 1 Formatted LBA Size:")) {
-                            capacity = line.split(":")[1].trim().split(" ")[0]; // Extracts the capacity in GB
-                            System.out.println("CAPACITY = " + capacity);
+                        // If model, serial, and capacity are found, add them to the DTO list.
+                        if (model != null && serial != null && capacity != null) {
+                            detectedSSDs.add(SSDResponseDTO.builder()
+                                    .model(model)
+                                    .serial(serial)
+                                    .capacityGB(Long.parseLong(capacity))
+                                    .registrationDate(LocalDateTime.now())  // Set the current date for registration.
+                                    .formattedDateTime(Utilities.formatLocalDateTime(LocalDateTime.now())) // Format the date.
+                                    .build());
                         }
-                    }
-
-                    // If model, serial and capacity are found, add them to the DTO list
-                    if (model != null && serial != null && capacity != null) {
-                        detectedSSDs.add(SSDResponseDTO.builder()
-                                .model(model)
-                                .serial(serial)
-                                .capacityGB(Long.parseLong(capacity))
-                                .registrationDate(LocalDateTime.now())  // Set the current date for registration
-                                .formattedDateTime(Utilities.formatLocalDateTime(LocalDateTime.now())) // Format the date
-                                .build());
+                    } catch (Exception e) {
+                        // Log the error and continue with the next device.
+                        System.err.println("Error retrieving information for device " + device + ": " + e.getMessage());
                     }
                 }
             }

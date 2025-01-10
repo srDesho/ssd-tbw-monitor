@@ -1,70 +1,105 @@
 package com.cristianml.SSDMonitoringApi.service.impl;
 
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 @Service
 public class TbwSchedulerService {
 
     private final TbwRecordServiceImpl tbwRecordService;
+    private final TimeService timeService;
     private static final Logger logger = LoggerFactory.getLogger(TbwSchedulerService.class);
 
-    // Scheduler start and end times.
+    // Start and end time for the scheduler.
     private final LocalTime startTime = LocalTime.of(17, 0); // 17:00
     private final LocalTime endTime = LocalTime.of(0, 0);    // 00:00 (midnight)
 
-    public TbwSchedulerService(TbwRecordServiceImpl tbwRecordService) {
+    // Control flags.
+    private boolean shouldRunScheduler = false; // Initially disabled until initialization.
+    private LocalDate lastRegistrationDate = null;
+
+    public TbwSchedulerService(TbwRecordServiceImpl tbwRecordService, TimeService timeService) {
         this.tbwRecordService = tbwRecordService;
+        this.timeService = timeService;
     }
 
-    // Executes the scheduler every minute.
-    @Scheduled(cron = "0 * * * * ?")
-    public void scheduleAutoRegisterTBW() {
-        LocalTime now = LocalTime.now();
-        LocalDate today = LocalDate.now();
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        try {
+            LocalDateTime now = timeService.getCurrentDateTime();
+            LocalTime currentTime = now.toLocalTime();
 
-        // Checks if the current time is within the allowed range (17:00 - 00:00).
-        if (isWithinScheduleTime(now)) {
-            logger.info("Executing scheduler at: {}", now);
-
-            // Attempts to register TBW.
-            boolean tbwRegistered = tbwRecordService.autoRegisterTBW();
-
-            // If TBW is registered, stop the scheduler.
-            if (tbwRegistered) {
-                logger.info("TBW registered. Scheduler stopped.");
-                // Additional logic to stop the scheduler could be added here if necessary.
+            if (isWithinScheduleTime(currentTime)) {
+                logger.info("Server started within the allowed time range (17:00 - 00:00). Enabling scheduler.");
+                shouldRunScheduler = true;
+            } else {
+                logger.info("Server started outside the allowed time range. Disabling scheduler.");
+                shouldRunScheduler = false;
             }
-        } else {
-            logger.info("Outside execution time range (17:00 - 00:00).");
+        } catch (Exception e) {
+            logger.error("Error during scheduler initialization", e);
+            shouldRunScheduler = false;
         }
     }
 
-    // Checks if the current time is within the allowed range.
+    @Scheduled(cron = "0 * * * * ?")
+    public void scheduleAutoRegisterTBW() {
+        try {
+            LocalDateTime currentDateTime = timeService.getCurrentDateTime();
+            LocalDate currentDate = currentDateTime.toLocalDate();
+            LocalTime currentTime = currentDateTime.toLocalTime();
+
+            // Check if it's a new day.
+            if (lastRegistrationDate != null && !currentDate.isEqual(lastRegistrationDate)) {
+                logger.info("New day detected. Reactivating scheduler.");
+                shouldRunScheduler = true;
+                lastRegistrationDate = null; // Reset the last registration date.
+            }
+
+            if (!shouldRunScheduler) {
+                logger.debug("Scheduler is disabled. Skipping execution.");
+                return;
+            }
+
+            // Check if current time is within allowed range or if it's a new day.
+            if (isWithinScheduleTime(currentTime) || (lastRegistrationDate == null)) {
+                logger.info("Executing scheduler at: {}", currentTime);
+
+                boolean tbwRegistered = tbwRecordService.autoRegisterTBW();
+
+                if (tbwRegistered) {
+                    logger.info("TBW registered successfully. Disabling scheduler until tomorrow at 17:00.");
+                    shouldRunScheduler = false;
+                    lastRegistrationDate = currentDate;
+                }
+            } else {
+                logger.info("Outside allowed time range (17:00 - 00:00). Disabling scheduler.");
+                shouldRunScheduler = false;
+            }
+        } catch (Exception e) {
+            logger.error("Error during scheduler execution", e);
+        }
+    }
+
     private boolean isWithinScheduleTime(LocalTime now) {
         if (startTime.isBefore(endTime)) {
-            // Normal case: 17:00 - 00:00
             return now.isAfter(startTime) && now.isBefore(endTime);
         } else {
-            // Special case: If endTime is 00:00, it is considered the start of the next day.
             return now.isAfter(startTime) || now.isBefore(endTime);
         }
     }
 
-    @PostConstruct
-    public void init() {
-        LocalTime now = LocalTime.now();
-
-        // If the server starts after 17:00, execute the scheduler immediately.
-        if (isWithinScheduleTime(now)) {
-            logger.info("Server started within execution time. Running scheduler...");
-            scheduleAutoRegisterTBW();
-        }
+    @Scheduled(cron = "0 0 17 * * ?")
+    public void enableScheduler() {
+        logger.info("Re-enabling scheduler for daily execution.");
+        shouldRunScheduler = true;
     }
 }

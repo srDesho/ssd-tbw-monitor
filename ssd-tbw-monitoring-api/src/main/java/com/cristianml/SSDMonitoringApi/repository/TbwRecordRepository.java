@@ -16,4 +16,6 @@ public interface TbwRecordRepository extends JpaRepository<TbwRecordEntity, Long
     Optional<TbwRecordEntity> findBySsdAndDate(SSDEntity ssd, LocalDate date);
 
     List<TbwRecordEntity> findByDateAfter(LocalDate apiDate);
+
+    Optional<TbwRecordEntity> findTopByOrderByDateDesc();
 }

@@ -77,14 +77,24 @@ public class TbwSchedulerService {
             LocalDate currentDate = currentDateTime.toLocalDate();
             LocalTime currentTime = currentDateTime.toLocalTime();
 
+            // Delete future records before attempting to register TBW.
+            deleteFutureRecords();
+
+            // Update records if they exceed 3gb
+            // Verificar si la fecha de la API está disponible.
+            if (!timeService.isApiDateAvailable()) {
+                logger.warn("API date is not available. Skipping update of records.");
+            } else {
+                tbwRecordService.checkAndUpdateTbwRecords(timeService.getCurrentDateTime().toLocalDate());
+                return;
+            }
+
+
             // Check if the current time is within the allowed range (17:00 - 00:00).
             if (!isWithinScheduleTime(currentTime)) {
                 logger.info("Outside allowed time range (17:00 - 00:00). Skipping execution.");
                 return;
             }
-
-            // Delete future records before attempting to register TBW.
-            deleteFutureRecords();
 
             // Validate system date before proceeding with TBW registration.
             if (!isSystemDateValid()) {
@@ -149,39 +159,26 @@ public class TbwSchedulerService {
         }
     }
 
-    /**
-     * Deletes TBW records with dates that are ahead of the current API date.
-     * This ensures that no future records are kept in the database.
-     * Only deletes future records if the API date is available and the system date is valid.
-     */
     public void deleteFutureRecords() {
         try {
-            // Check if the API date is available.
+            // Verificar si la fecha de la API está disponible.
             if (!timeService.isApiDateAvailable()) {
                 logger.warn("API date is not available. Skipping deletion of future records.");
                 return;
             }
 
-            // Get the current date from the API.
-            LocalDateTime apiDateTime = timeService.getCurrentDateTime();
-            LocalDate apiDate = apiDateTime.toLocalDate();
+            // Obtener la fecha actual desde el servicio de tiempo.
+            LocalDate apiDate = timeService.getCurrentDateTime().toLocalDate();
 
-            // Get the current system date.
-            LocalDate systemDate = LocalDate.now();
-
-            // Only delete future records if the system date is valid (matches the API date).
-            if (systemDate.isEqual(apiDate)) {
-                // Find and delete records with dates after the current API date.
-                List<TbwRecordEntity> futureRecords = tbwRecordRepository.findByDateAfter(apiDate);
-                if (!futureRecords.isEmpty()) {
-                    logger.info("Deleting {} future records", futureRecords.size());
-                    tbwRecordRepository.deleteAll(futureRecords);
-                }
-            } else {
-                logger.warn("System date is manipulated. Skipping deletion of future records.");
+            // Buscar y eliminar los registros con fecha futura.
+            List<TbwRecordEntity> futureRecords = tbwRecordRepository.findByDateAfter(apiDate);
+            if (!futureRecords.isEmpty()) {
+                logger.info("Deleting {} future records", futureRecords.size());
+                tbwRecordRepository.deleteAll(futureRecords);
             }
         } catch (Exception e) {
             logger.error("Error while deleting future records", e);
         }
     }
+
 }

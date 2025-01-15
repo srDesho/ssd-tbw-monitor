@@ -12,4 +12,5 @@ public interface ITbwRecord {
     boolean autoRegisterTBW();
     TbwRecordResponseDTO manualRegisterTBW(Long ssdId, LocalDate date, LocalTime time, Long tbw);
 
+    long getCurrentTbwForSSD(Long ssdId);
 }

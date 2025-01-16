@@ -8,6 +8,10 @@ import org.springframework.web.client.RestTemplate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+/**
+ * This class provides services for retrieving the current date and time from an external API.
+ * It falls back to the system time if the API is unavailable.
+ */
 @Service
 public class TimeService {
 
@@ -20,18 +24,23 @@ public class TimeService {
      * @return the current date and time.
      */
     public LocalDateTime getCurrentDateTime() {
+        logger.debug("Fetching current date and time from TimeAPI");
         try {
             RestTemplate restTemplate = new RestTemplate();
             TimeApiResponse response = restTemplate.getForObject(TIME_API_URL, TimeApiResponse.class);
             if (response != null && response.getDateTime() != null) {
                 // Parse the date and time from the ISO 8601 format.
-                return LocalDateTime.parse(response.getDateTime(), DateTimeFormatter.ISO_DATE_TIME);
+                LocalDateTime apiDateTime = LocalDateTime.parse(response.getDateTime(), DateTimeFormatter.ISO_DATE_TIME);
+                logger.info("Successfully fetched date and time from TimeAPI: {}", apiDateTime);
+                return apiDateTime;
             }
         } catch (Exception e) {
             logger.warn("Failed to fetch time from TimeAPI, using system time instead", e);
         }
         // Fallback: Use the local system date and time.
-        return LocalDateTime.now();
+        LocalDateTime systemDateTime = LocalDateTime.now();
+        logger.info("Using system date and time: {}", systemDateTime);
+        return systemDateTime;
     }
 
     /**
@@ -40,10 +49,13 @@ public class TimeService {
      * @return true if the date was fetched from the API, false if it's the system date.
      */
     public boolean isApiDateAvailable() {
+        logger.debug("Checking if API date is available");
         try {
             RestTemplate restTemplate = new RestTemplate();
             TimeApiResponse response = restTemplate.getForObject(TIME_API_URL, TimeApiResponse.class);
-            return response != null && response.getDateTime() != null;
+            boolean isAvailable = response != null && response.getDateTime() != null;
+            logger.info("API date availability: {}", isAvailable);
+            return isAvailable;
         } catch (Exception e) {
             logger.warn("Failed to fetch time from TimeAPI", e);
             return false;

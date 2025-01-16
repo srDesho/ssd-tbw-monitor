@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@RequiredArgsConstructor
+// @RequiredArgsConstructor
 @RestController
 @RequestMapping("/ssds")
 public class SSDController {
@@ -24,6 +24,12 @@ public class SSDController {
     private final SSDServiceImpl ssdService;
     private final HardwareServiceImpl hardwareService;
     private final TbwRecordServiceImpl tbwRecordService;
+
+    public SSDController(SSDServiceImpl ssdService, HardwareServiceImpl hardwareService, TbwRecordServiceImpl tbwRecordService) {
+        this.ssdService = ssdService;
+        this.hardwareService = hardwareService;
+        this.tbwRecordService = tbwRecordService;
+    }
 
     @GetMapping
     public ResponseEntity<List<SSDResponseDTO>> getAllSSDs() {

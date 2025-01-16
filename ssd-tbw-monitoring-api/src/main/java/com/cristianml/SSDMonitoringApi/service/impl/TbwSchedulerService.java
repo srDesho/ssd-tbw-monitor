@@ -8,6 +8,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -22,14 +23,15 @@ import java.util.List;
 @Service
 public class TbwSchedulerService {
 
+    private static final Logger logger = LoggerFactory.getLogger(TbwSchedulerService.class);
+
     private final TbwRecordServiceImpl tbwRecordService;
     private final TimeService timeService;
-    private static final Logger logger = LoggerFactory.getLogger(TbwSchedulerService.class);
     private final TbwRecordRepository tbwRecordRepository;
 
     // Start and end time for the scheduler.
-    private final LocalTime startTime = LocalTime.of(17, 0); // 17:00
-    private final LocalTime endTime = LocalTime.of(0, 0);    // 00:00 (midnight)
+    private static final LocalTime START_TIME = LocalTime.of(17, 0); // 17:00
+    private static final LocalTime END_TIME = LocalTime.of(0, 0);    // 00:00 (midnight)
 
     // Control flags.
     private boolean shouldRunScheduler = false; // Initially disabled until initialization.
@@ -48,19 +50,22 @@ public class TbwSchedulerService {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
+        logger.info("Initializing TBW Scheduler Service");
+
         try {
             LocalDateTime now = timeService.getCurrentDateTime();
             LocalTime currentTime = now.toLocalTime();
 
-            if (isWithinScheduleTime(currentTime)) {
-                logger.info("Server started within the allowed time range (17:00 - 00:00). Enabling scheduler.");
-                shouldRunScheduler = true;
+            shouldRunScheduler = isWithinScheduleTime(currentTime);
+            logger.info("Scheduler initialization completed. Status: {}", shouldRunScheduler ? "ENABLED" : "DISABLED");
+
+            if (shouldRunScheduler) {
+                logger.info("Server started within allowed time range (17:00 - 00:00)");
             } else {
-                logger.info("Server started outside the allowed time range. Disabling scheduler.");
-                shouldRunScheduler = false;
+                logger.info("Server started outside allowed time range, scheduler will activate at next window");
             }
         } catch (Exception e) {
-            logger.error("Error during scheduler initialization", e);
+            logger.error("Failed to initialize scheduler", e);
             shouldRunScheduler = false;
         }
     }
@@ -70,8 +75,11 @@ public class TbwSchedulerService {
      * It ensures that the scheduler only runs within the allowed time range (17:00 - 00:00)
      * and handles day changes to reactivate the scheduler.
      */
-    @Scheduled(fixedRate = 2000) // cron = "0 * * * * ?" Runs every minute
+    @Scheduled(fixedRate = 20000)
+    @Transactional
     public void scheduleAutoRegisterTBW() {
+        logger.debug("Starting scheduled TBW registration check");
+
         try {
             LocalDateTime currentDateTime = timeService.getCurrentDateTime();
             LocalDate currentDate = currentDateTime.toLocalDate();
@@ -80,39 +88,34 @@ public class TbwSchedulerService {
             // Delete future records before attempting to register TBW.
             deleteFutureRecords();
 
-            // Update records if they exceed 3gb
-            // Verificar si la fecha de la API está disponible.
-            if (!timeService.isApiDateAvailable()) {
-                logger.warn("API date is not available. Skipping update of records.");
+            // Verify records exist for current date
+            boolean recordsExist = this.tbwRecordRepository.existsByDate(currentDate);
+            if (!recordsExist) {
+                logger.warn("No TBW records found for date: {}. Skipping update.", currentDate);
             } else {
-                tbwRecordService.checkAndUpdateTbwRecords(timeService.getCurrentDateTime().toLocalDate());
+                logger.debug("Checking and updating TBW records for date: {}", currentDate);
+                tbwRecordService.checkAndUpdateTbwRecords(currentDate);
                 return;
             }
 
-
-            // Check if the current time is within the allowed range (17:00 - 00:00).
+            // Schedule time validation
             if (!isWithinScheduleTime(currentTime)) {
-                logger.info("Outside allowed time range (17:00 - 00:00). Skipping execution.");
+                logger.debug("Current time {} is outside allowed range (17:00 - 00:00)", currentTime);
                 return;
             }
 
-            // Validate system date before proceeding with TBW registration.
+            // System date validation
             if (!isSystemDateValid()) {
-                logger.warn("System date is manipulated. Skipping TBW registration.");
+                logger.warn("System date validation failed. Current system time: {}", LocalDateTime.now());
                 return;
             }
 
-            // Attempt to register TBW.
+            // TBW Registration
             boolean tbwRegistered = tbwRecordService.autoRegisterTBW();
-
-            if (tbwRegistered) {
-                logger.info("TBW registered for at least one SSD.");
-            } else {
-                logger.info("No TBW registration needed at this moment.");
-            }
+            logger.info("TBW registration attempt completed. Success: {}", tbwRegistered);
 
         } catch (Exception e) {
-            logger.error("Error during scheduler execution", e);
+            logger.error("Failed to execute scheduled TBW registration", e);
         }
     }
 
@@ -123,11 +126,12 @@ public class TbwSchedulerService {
      * @return true if the current time is within the allowed range, false otherwise.
      */
     private boolean isWithinScheduleTime(LocalTime now) {
-        if (startTime.isBefore(endTime)) {
-            return now.isAfter(startTime) && now.isBefore(endTime);
-        } else {
-            return now.isAfter(startTime) || now.isBefore(endTime);
-        }
+        boolean isWithinRange = START_TIME.isBefore(END_TIME) ?
+                (now.isAfter(START_TIME) && now.isBefore(END_TIME)) :
+                (now.isAfter(START_TIME) || now.isBefore(END_TIME));
+
+        logger.debug("Time check - Current: {}, Within range: {}", now, isWithinRange);
+        return isWithinRange;
     }
 
     /**
@@ -136,8 +140,8 @@ public class TbwSchedulerService {
      */
     @Scheduled(cron = "0 0 17 * * ?")
     public void enableScheduler() {
-        logger.info("Re-enabling scheduler for daily execution.");
-        shouldRunScheduler = true; // Re-enable the scheduler.
+        logger.info("Daily scheduler activation triggered at {}", LocalTime.now());
+        shouldRunScheduler = true;
     }
 
     /**
@@ -151,34 +155,42 @@ public class TbwSchedulerService {
             LocalDateTime systemDateTime = LocalDateTime.now();
             LocalDateTime apiDateTime = timeService.getCurrentDateTime();
 
-            // If the system date is ahead or behind the API date, return false.
-            return systemDateTime.toLocalDate().isEqual(apiDateTime.toLocalDate());
+            boolean isValid = systemDateTime.toLocalDate().isEqual(apiDateTime.toLocalDate());
+            logger.debug("Date validation - System: {}, API: {}, Valid: {}",
+                    systemDateTime.toLocalDate(), apiDateTime.toLocalDate(), isValid);
+            return isValid;
         } catch (Exception e) {
-            logger.error("Error while validating system date", e);
-            return false; // Assume the date is invalid if there's an error.
+            logger.error("System date validation failed", e);
+            return false;
         }
     }
 
+    /**
+     * Deletes future records from the database.
+     */
+    @Transactional
     public void deleteFutureRecords() {
+        logger.debug("Starting future records cleanup");
+
         try {
-            // Verificar si la fecha de la API está disponible.
             if (!timeService.isApiDateAvailable()) {
-                logger.warn("API date is not available. Skipping deletion of future records.");
+                logger.warn("API date unavailable, skipping future records cleanup");
                 return;
             }
 
-            // Obtener la fecha actual desde el servicio de tiempo.
             LocalDate apiDate = timeService.getCurrentDateTime().toLocalDate();
-
-            // Buscar y eliminar los registros con fecha futura.
             List<TbwRecordEntity> futureRecords = tbwRecordRepository.findByDateAfter(apiDate);
+
             if (!futureRecords.isEmpty()) {
-                logger.info("Deleting {} future records", futureRecords.size());
+                logger.info("Found {} future records to delete", futureRecords.size());
                 tbwRecordRepository.deleteAll(futureRecords);
+                logger.info("Successfully deleted {} future records", futureRecords.size());
+            } else {
+                logger.debug("No future records found to delete");
             }
         } catch (Exception e) {
-            logger.error("Error while deleting future records", e);
+            logger.error("Failed to delete future records", e);
+            throw e; // Propagar para rollback de transacción
         }
     }
-
 }

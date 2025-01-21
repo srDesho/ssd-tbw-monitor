@@ -71,17 +71,18 @@ public class TbwRecordServiceImpl implements ITbwRecord {
     public boolean autoRegisterTBW() {
         logger.info("Executing autoRegisterTBW...");
 
-        // Get record with the highest date.
-        TbwRecordEntity higherDateRecord = this.tbwRecordRepository.findTopByOrderByDateDesc()
-                .orElseThrow(() -> {
-                    logger.error("No TBW records found in the database.");
-                    return new IllegalArgumentException("No records found");
-                });
+        // Get record with the highest date if exists
+        Optional<TbwRecordEntity> higherDateRecordOpt = this.tbwRecordRepository.findTopByOrderByDateDesc();
 
-        // Validate if the current date is before the highest recorded date.
-        if (LocalDate.now().isBefore(higherDateRecord.getDate())) {
-            logger.warn("System date manipulated, date delayed. Skipping TBW registration.");
-            return false;
+        // If there's a record, validate the date
+        if (higherDateRecordOpt.isPresent()) {
+            TbwRecordEntity higherDateRecord = higherDateRecordOpt.get();
+            if (LocalDate.now().isBefore(higherDateRecord.getDate())) {
+                logger.warn("System date manipulated, date delayed. Skipping TBW registration.");
+                return false;
+            }
+        } else {
+            logger.info("No previous TBW records found. Proceeding with first registration.");
         }
 
         LocalDate currentDate = LocalDate.now();

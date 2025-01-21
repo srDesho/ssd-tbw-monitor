@@ -75,7 +75,7 @@ public class TbwSchedulerService {
      * It ensures that the scheduler only runs within the allowed time range (17:00 - 00:00)
      * and handles day changes to reactivate the scheduler.
      */
-    @Scheduled(fixedRate = 20000)
+    @Scheduled(cron = "0 */1 * * * *")     //fixedRate = 20000
     @Transactional
     public void scheduleAutoRegisterTBW() {
         logger.debug("Starting scheduled TBW registration check");

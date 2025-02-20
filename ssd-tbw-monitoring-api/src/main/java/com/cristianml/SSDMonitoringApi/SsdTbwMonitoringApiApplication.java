@@ -11,7 +11,6 @@ public class SsdTbwMonitoringApiApplication {
 
 	public static void main(String[] args) {
 
-		// Check and create DB if it doesn't exist.
 		DatabaseInitializer.initializeDatabase();
 
 		SpringApplication.run(SsdTbwMonitoringApiApplication.class, args);

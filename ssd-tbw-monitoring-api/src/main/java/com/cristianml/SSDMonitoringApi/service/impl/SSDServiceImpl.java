@@ -64,27 +64,84 @@ public class SSDServiceImpl implements ISSDService {
         for (SSDResponseDTO ssd : detectedSSDs) {
             try {
                 // Check if the SSD is already registered.
-                if (this.ssdRepository.existsByModelAndSerial(ssd.getModel(), ssd.getSerial())) {
+                SSDEntity existingSsd = this.ssdRepository.findByModelAndSerial(ssd.getModel(), ssd.getSerial());
+
+                if (existingSsd != null) {
                     logger.warn("SSD with model {} and serial {} is already registered", ssd.getModel(), ssd.getSerial());
-                    throw new IllegalArgumentException("SSD already registered.");
+                    // Update isMonitored to true if it's currently false
+                    if (!existingSsd.getIsMonitored()) {
+                        existingSsd.setIsMonitored(true);
+                        this.ssdRepository.save(existingSsd);
+                        logger.info("Updated monitoring status to true for SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial());
+                    }
+                } else {
+                    // Get the current date and time.
+                    LocalDateTime now = LocalDateTime.now();
+
+                    // Build a new SSD entity and save it to the database.
+                    SSDEntity ssdEntity = SSDEntity.builder()
+                            .model(ssd.getModel())
+                            .serial(ssd.getSerial())
+                            .capacityGB(ssd.getCapacityGB())
+                            .registrationDate(now)
+                            .isMonitored(false) // Initially false
+                            .build();
+
+                    // Save the entity and map it to a response DTO.
+                    SSDEntity savedEntity = this.ssdRepository.save(ssdEntity);
+                    ssdMapper.toResponseDTO(savedEntity);
+                    logger.info("Successfully registered new SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial());
                 }
+            } catch (Exception e) {
+                logger.error("Error registering SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial(), e);
+                throw e;
+            }
+        }
+    }
 
-                // Get the current date and time.
-                LocalDateTime now = LocalDateTime.now();
+    /**
+     * Detects SSDs using hardware services and registers them if they are not already in the database.
+     *
+     */
+    @Transactional
+    public void detectAndRegisterSsdOnStartup() {
+        logger.debug("Starting SSD detection and registration process on startup");
 
-                // Build a new SSD entity and save it to the database.
-                SSDEntity ssdEntity = SSDEntity.builder()
-                        .model(ssd.getModel())
-                        .serial(ssd.getSerial())
-                        .capacityGB(ssd.getCapacityGB())
-                        .registrationDate(now)
-                        .isMonitored(false)
-                        .build();
+        // Detect SSDs using the hardware service.
+        List<SSDResponseDTO> detectedSSDs = hardwareService.detectSSDsUsingSmartctl();
+        logger.info("Detected {} SSDs", detectedSSDs.size());
 
-                // Save the entity and map it to a response DTO.
-                SSDEntity savedEntity = this.ssdRepository.save(ssdEntity);
-                ssdMapper.toResponseDTO(savedEntity);
-                logger.info("Successfully registered new SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial());
+        for (SSDResponseDTO ssd : detectedSSDs) {
+            try {
+                // Check if the SSD is already registered.
+                SSDEntity existingSsd = this.ssdRepository.findByModelAndSerial(ssd.getModel(), ssd.getSerial());
+
+                if (existingSsd != null) {
+                    logger.warn("SSD with model {} and serial {} is already registered", ssd.getModel(), ssd.getSerial());
+                    // Update isMonitored to true if it's currently false
+                    if (!existingSsd.getIsMonitored()) {
+                        existingSsd.setIsMonitored(true);
+                        this.ssdRepository.save(existingSsd);
+                        logger.info("Updated monitoring status to true for SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial());
+                    }
+                } else {
+                    // Get the current date and time.
+                    LocalDateTime now = LocalDateTime.now();
+
+                    // Build a new SSD entity and save it to the database.
+                    SSDEntity ssdEntity = SSDEntity.builder()
+                            .model(ssd.getModel())
+                            .serial(ssd.getSerial())
+                            .capacityGB(ssd.getCapacityGB())
+                            .registrationDate(now)
+                            .isMonitored(true) // Initially true
+                            .build();
+
+                    // Save the entity and map it to a response DTO.
+                    SSDEntity savedEntity = this.ssdRepository.save(ssdEntity);
+                    ssdMapper.toResponseDTO(savedEntity);
+                    logger.info("Successfully registered new SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial());
+                }
             } catch (Exception e) {
                 logger.error("Error registering SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial(), e);
                 throw e;

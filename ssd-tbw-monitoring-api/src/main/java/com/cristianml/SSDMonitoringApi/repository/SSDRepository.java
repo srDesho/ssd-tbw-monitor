@@ -14,4 +14,5 @@ public interface SSDRepository extends JpaRepository<SSDEntity, Long> {
     boolean existsByModelAndSerial(String model, String serial);
     List<SSDEntity> findByIsMonitored(Boolean isMonitored);
 
+    SSDEntity findByModelAndSerial(String model, String serial);
 }

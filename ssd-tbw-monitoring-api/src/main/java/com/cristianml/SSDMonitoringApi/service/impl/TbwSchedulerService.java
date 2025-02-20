@@ -28,6 +28,7 @@ public class TbwSchedulerService {
     private final TbwRecordServiceImpl tbwRecordService;
     private final TimeService timeService;
     private final TbwRecordRepository tbwRecordRepository;
+    private final SSDServiceImpl ssdService; // Inject SSDServiceImpl
 
     // Start and end time for the scheduler.
     private static final LocalTime START_TIME = LocalTime.of(17, 0); // 17:00
@@ -37,10 +38,11 @@ public class TbwSchedulerService {
     private boolean shouldRunScheduler = false; // Initially disabled until initialization.
     private LocalDate lastRegistrationDate = null;
 
-    public TbwSchedulerService(TbwRecordServiceImpl tbwRecordService, TimeService timeService, TbwRecordRepository tbwRecordRepository) {
+    public TbwSchedulerService(TbwRecordServiceImpl tbwRecordService, TimeService timeService, TbwRecordRepository tbwRecordRepository, SSDServiceImpl ssdService) {
         this.tbwRecordService = tbwRecordService;
         this.timeService = timeService;
         this.tbwRecordRepository = tbwRecordRepository;
+        this.ssdService = ssdService;
     }
 
     /**
@@ -53,6 +55,9 @@ public class TbwSchedulerService {
         logger.info("Initializing TBW Scheduler Service");
 
         try {
+            // Detect and register SSDs on startup
+            ssdService.detectAndRegisterSsdOnStartup(); // Call the new method
+
             LocalDateTime now = timeService.getCurrentDateTime();
             LocalTime currentTime = now.toLocalTime();
 

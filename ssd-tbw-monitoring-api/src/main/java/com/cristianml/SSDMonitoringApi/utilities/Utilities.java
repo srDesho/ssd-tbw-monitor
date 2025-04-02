@@ -11,6 +11,7 @@ import java.util.Map;
 
 public class Utilities {
 
+    public Utilities() {}
     /**
      * Custom method to format a ResponseEntity with a standardized structure.
      * This is a generic method that can handle any type of object and returns
@@ -25,6 +26,10 @@ public class Utilities {
         Map<String, Object> map = new HashMap<String, Object>();
 
         try {
+            if (status == null) {
+                throw new NullPointerException("Status cannot be null");
+            }
+
             // Populate the map with standard response fields
             map.put("fecha", new Date());     // Add current timestamp
             map.put("status", status);        // Add HTTP status
@@ -45,7 +50,7 @@ public class Utilities {
             // Additional error-related fields can be added to the map as needed
 
             // Return a new ResponseEntity with the error information
-            return new ResponseEntity<Object>(map, status);
+            return new ResponseEntity<Object>(map, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 

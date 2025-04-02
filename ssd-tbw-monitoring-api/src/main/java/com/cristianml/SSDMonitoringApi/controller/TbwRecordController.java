@@ -26,12 +26,6 @@ public class TbwRecordController {
         return ResponseEntity.ok(tbwRecordEntityList);
     }
 
-    @PostMapping
-    public ResponseEntity<Object> registerManualTBW(@RequestBody TbwRecordResponseDTO request) {
-        this.tbwRecordService.manualRegisterTBW(request.getSsdId(), request.getDate(), request.getTime(), request.getTbw());
-        return Utilities.generateResponse(HttpStatus.CREATED, "Register created successfully.");
-    }
-
     @PostMapping("/auto")
     public ResponseEntity<Void> triggerAutoRegister() {
         this.tbwRecordService.autoRegisterTBW();

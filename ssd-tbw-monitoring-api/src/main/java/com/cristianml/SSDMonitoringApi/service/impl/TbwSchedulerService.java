@@ -36,7 +36,6 @@ public class TbwSchedulerService {
 
     // Control flags.
     private boolean shouldRunScheduler = false; // Initially disabled until initialization.
-    private LocalDate lastRegistrationDate = null;
 
     public TbwSchedulerService(TbwRecordServiceImpl tbwRecordService, TimeService timeService, TbwRecordRepository tbwRecordRepository, SSDServiceImpl ssdService) {
         this.tbwRecordService = tbwRecordService;

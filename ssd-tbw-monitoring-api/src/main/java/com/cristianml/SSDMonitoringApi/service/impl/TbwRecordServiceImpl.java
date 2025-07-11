@@ -224,6 +224,7 @@ public class TbwRecordServiceImpl implements ITbwRecord {
 
                         // If the current TBW is greater than or equal to the recorded TBW by 3 GB, update the record.
                         if (currentTbw - recordedTbw >= TBW_UPDATE_THRESHOLD) {
+                            System.out.println("ACTUALIZANDO TBW A: " + currentTbw); // Debug print
                             logger.info("Updating TBW record for SSD: {} on date: {}", ssd.getModel(), currentDate);
                             record.setTbw(currentTbw);
                             tbwRecordRepository.save(record);

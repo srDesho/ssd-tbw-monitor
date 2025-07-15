@@ -1,15 +1,11 @@
 package com.cristianml.SSDMonitoringApi.controller;
 
-import com.cristianml.SSDMonitoringApi.domain.SSDEntity;
-import com.cristianml.SSDMonitoringApi.domain.TbwRecordEntity;
-import com.cristianml.SSDMonitoringApi.dto.request.SSDRequestDTO;
 import com.cristianml.SSDMonitoringApi.dto.response.SSDResponseDTO;
 import com.cristianml.SSDMonitoringApi.dto.response.TbwRecordResponseDTO;
 import com.cristianml.SSDMonitoringApi.service.impl.HardwareServiceImpl;
 import com.cristianml.SSDMonitoringApi.service.impl.SSDServiceImpl;
 import com.cristianml.SSDMonitoringApi.service.impl.TbwRecordServiceImpl;
 import com.cristianml.SSDMonitoringApi.utilities.Utilities;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

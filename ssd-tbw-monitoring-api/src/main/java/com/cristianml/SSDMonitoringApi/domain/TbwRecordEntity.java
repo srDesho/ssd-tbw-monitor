@@ -1,5 +1,7 @@
 package com.cristianml.SSDMonitoringApi.domain;
 
+import com.cristianml.SSDMonitoringApi.config.LocalDateConverter;
+import com.cristianml.SSDMonitoringApi.config.LocalTimeConverter;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -24,10 +26,12 @@ public class TbwRecordEntity {
     @JoinColumn(name = "ssd_id", nullable = false)
     private SSDEntity ssd;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
+    @Convert(converter = LocalDateConverter.class)
     private LocalDate date;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
+    @Convert(converter = LocalTimeConverter.class)
     private LocalTime time;
 
     @Column(nullable = false)

@@ -17,5 +17,6 @@ public class TbwRecordResponseDTO {
     private LocalDate date;
     private LocalTime time;
     private Long tbw;
+
 }
 

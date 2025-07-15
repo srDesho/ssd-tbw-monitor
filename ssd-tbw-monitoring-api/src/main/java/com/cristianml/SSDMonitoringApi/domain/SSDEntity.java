@@ -1,5 +1,6 @@
 package com.cristianml.SSDMonitoringApi.domain;
 
+import com.cristianml.SSDMonitoringApi.config.LocalDateTimeConverter;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -30,7 +31,8 @@ public class SSDEntity {
     @Column(name = "capacity_gb", nullable = false)
     private Long capacityGB;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
+    @Convert(converter = LocalDateTimeConverter.class)
     private LocalDateTime registrationDate;
 
     @Column(name = "is_monitored", nullable = false)

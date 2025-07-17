@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSD TBW Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        .ssd-card {
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .ssd-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+        .btn-refresh {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: transform 0.2s;
+        }
+        .btn-refresh:hover {
+            transform: scale(1.1) rotate(180deg);
+        }
+        .btn-refresh:active {
+            transform: scale(0.95);
+        }
+        .btn-refresh.spinning {
+            animation: spin 1s linear;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spinner-container {
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .table th {
+            position: sticky;
+            top: 0;
+            background: #f8f9fa;
+            z-index: 10;
+        }
+        .refresh-timestamp {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            background: rgba(255,255,255,0.9);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h1 class="mb-0">📊 SSD TBW Monitor</h1>
+                    <p class="text-muted mb-0">Automated Total Bytes Written (TBW) tracking for your storage devices</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SSDs List Container -->
+    <div id="ssds-container" class="row">
+        <div class="col-12">
+            <div class="spinner-container">
+                <div class="spinner-border text-light" role="status">
+                    <span class="visually-hidden">Loading SSDs...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Records Table Section (Hidden by default) -->
+    <div id="table-section" class="row" style="display: none;">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h4 id="table-title" class="mb-0">TBW Records History</h4>
+                        <button class="btn btn-sm btn-secondary" onclick="hideTable()">✕ Close</button>
+                    </div>
+
+                    <!-- Statistics Summary -->
+                    <div id="stats-summary" class="alert alert-info mb-3">
+                        <!-- Stats will be populated here -->
+                    </div>
+
+                    <!-- Records Table -->
+                    <div class="table-container">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>TBW (GB)</th>
+                                <th>Daily Increase</th>
+                            </tr>
+                            </thead>
+                            <tbody id="records-table-body">
+                            <!-- Table rows will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Refresh Timestamp -->
+<div id="refresh-timestamp" class="refresh-timestamp" style="display: none;">
+    <small>Last updated: <span id="last-update-time">-</span></small>
+</div>
+
+<!-- Floating Refresh Button -->
+<button id="refresh-btn" class="btn btn-primary btn-refresh" onclick="refreshData()" title="Refresh Data">
+    🔄
+</button>
+
+<script>
+    // Global variables
+    let currentRecords = [];
+    let isRefreshing = false;
+
+    // Determine API base URL based on environment
+    function getApiBase() {
+        return window.location.port === '8085' ? '' : '/api/v1';
+    }
+
+    // Main refresh function that calls the backend endpoint
+    async function refreshData() {
+        if (isRefreshing) {
+            console.log('Refresh already in progress...');
+            return;
+        }
+
+        isRefreshing = true;
+        const refreshBtn = document.getElementById('refresh-btn');
+        refreshBtn.classList.add('spinning');
+        refreshBtn.disabled = true;
+
+        try {
+            const API_BASE = getApiBase();
+
+            // Call the /ssds/all endpoint which:
+            // 1. Detects and registers new SSDs
+            // 2. Auto-registers TBW records
+            // 3. Returns all TBW records
+            const response = await fetch(`${API_BASE}/ssds/all`);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            // After successful refresh, reload the SSDs list
+            await loadSSDs();
+
+            updateLastRefreshTime();
+            showSuccessNotification();
+
+        } catch (error) {
+            console.error('Error refreshing data:', error);
+            showErrorNotification('Failed to refresh data. Check if the service is running.');
+        } finally {
+            isRefreshing = false;
+            setTimeout(() => {
+                refreshBtn.classList.remove('spinning');
+                refreshBtn.disabled = false;
+            }, 1000);
+        }
+    }
+
+    // Load all SSDs from the backend API
+    async function loadSSDs() {
+        try {
+            const API_BASE = getApiBase();
+            const response = await fetch(`${API_BASE}/ssds`);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const ssds = await response.json();
+            renderSSDs(ssds);
+            updateLastRefreshTime();
+
+        } catch (error) {
+            console.error('Error loading SSDs:', error);
+            showError('Cannot connect to the monitoring service. Make sure the backend is running.');
+        }
+    }
+
+    // Render the SSDs list in the UI
+    function renderSSDs(ssds) {
+        const container = document.getElementById('ssds-container');
+
+        if (ssds.length === 0) {
+            container.innerHTML = `
+                <div class="col-12">
+                    <div class="alert alert-info">
+                        <h5>📡 No SSDs Registered Yet</h5>
+                        <p class="mb-2">Click the refresh button to detect and register your SSDs.</p>
+                        <button class="btn btn-primary btn-sm" onclick="refreshData()">🔄 Detect SSDs Now</button>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        ssds.forEach(ssd => {
+            const hasRecords = ssd.records && ssd.records.length > 0;
+            const lastRecord = hasRecords ? ssd.records[ssd.records.length - 1] : null;
+            const currentTBW = lastRecord ? lastRecord.tbw : 0;
+            const lastUpdate = lastRecord ? `${lastRecord.date} ${lastRecord.time || ''}` : 'No TBW data recorded';
+            const statusBadge = ssd.isMonitored ? '<span class="badge bg-success">✓ Active</span>' : '<span class="badge bg-secondary">○ Inactive</span>';
+
+            html += `
+                <div class="col-md-6 col-lg-4">
+                    <div class="card ssd-card" onclick="showRecordsTable(${ssd.id}, '${ssd.model.replace(/'/g, "\\'")}')">
+                        <div class="card-body">
+                            <h5 class="card-title">${ssd.model}</h5>
+                            <p class="card-text text-muted small mb-3">S/N: ${ssd.serial}</p>
+
+                            <div class="row text-center mb-3">
+                                <div class="col-6">
+                                    <small class="text-muted d-block">Capacity</small>
+                                    <strong class="fs-5">${ssd.capacityGB} GB</strong>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted d-block">Total Written</small>
+                                    <strong class="fs-5 ${currentTBW > 0 ? 'text-primary' : 'text-muted'}">
+                                        ${currentTBW > 0 ? currentTBW.toLocaleString() + ' GB' : 'N/A'}
+                                    </strong>
+                                </div>
+                            </div>
+
+                            <hr>
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted" style="font-size: 0.75rem;">${lastUpdate}</small>
+                                ${statusBadge}
+                            </div>
+
+                            ${hasRecords ?
+                                `<div class="mt-2"><small class="text-primary">👆 Click to view ${ssd.records.length} record${ssd.records.length > 1 ? 's' : ''}</small></div>` :
+                                '<div class="mt-2"><small class="text-warning">⚠️ No historical data yet</small></div>'
+                            }
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    // Display TBW records in a table for a specific SSD
+    async function showRecordsTable(ssdId, model) {
+        try {
+            const API_BASE = getApiBase();
+            const response = await fetch(`${API_BASE}/ssds`);
+            const ssds = await response.json();
+            const ssd = ssds.find(s => s.id === ssdId);
+
+            if (!ssd || !ssd.records || ssd.records.length === 0) {
+                alert('No historical data available for this SSD yet.');
+                return;
+            }
+
+            const records = ssd.records;
+            currentRecords = records;
+
+            // Calculate statistics
+            const sortedForStats = [...records].sort((a, b) => new Date(a.date) - new Date(b.date));
+            const firstTBW = sortedForStats[0].tbw;
+            const lastTBW = sortedForStats[sortedForStats.length - 1].tbw;
+            const totalWritten = lastTBW - firstTBW;
+            const firstDate = new Date(sortedForStats[0].date);
+            const lastDate = new Date(sortedForStats[sortedForStats.length - 1].date);
+            const totalDays = Math.ceil((lastDate - firstDate) / (1000 * 60 * 60 * 24)) || 1;
+            const avgPerDay = totalWritten / totalDays;
+
+            // Update table title and statistics
+            document.getElementById('table-title').innerHTML = `📊 ${model} - TBW History`;
+            document.getElementById('stats-summary').innerHTML = `
+                <strong>Summary:</strong> ${records.length} record${records.length > 1 ? 's' : ''} |
+                Total written: <strong>+${totalWritten.toLocaleString()} GB</strong> |
+                Average: <strong>~${avgPerDay.toFixed(1)} GB/day</strong> |
+                Monitoring period: <strong>${totalDays} day${totalDays > 1 ? 's' : ''}</strong>
+            `;
+
+            // Build table rows
+            const tableBody = document.getElementById('records-table-body');
+            let tableHtml = '';
+
+            // Sort records by date (newest first)
+            const sortedRecords = [...records].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            // Track last record of each day
+            const lastRecordByDay = new Map();
+            sortedRecords.forEach(record => {
+                if (!lastRecordByDay.has(record.date) ||
+                    new Date(`1970-01-01T${record.time}`) > new Date(`1970-01-01T${lastRecordByDay.get(record.date).time}`)) {
+                    lastRecordByDay.set(record.date, record);
+                }
+            });
+
+            // Sort unique dates
+            const uniqueDates = Array.from(lastRecordByDay.keys()).sort((a, b) => new Date(b) - new Date(a));
+
+            sortedRecords.forEach((record) => {
+                let dailyIncrease = 0;
+                let increaseInfo = '';
+
+                // Check if this is the last record of its day
+                const isLastOfDay = lastRecordByDay.get(record.date) === record;
+
+                if (isLastOfDay) {
+                    const currentDateIndex = uniqueDates.indexOf(record.date);
+                    if (currentDateIndex < uniqueDates.length - 1) {
+                        const previousDate = uniqueDates[currentDateIndex + 1];
+                        const previousRecord = lastRecordByDay.get(previousDate);
+                        dailyIncrease = record.tbw - previousRecord.tbw;
+                        increaseInfo = dailyIncrease > 0 ? `+${dailyIncrease.toLocaleString()} GB` : '-';
+                    } else {
+                        increaseInfo = '<small class="text-muted">first record</small>';
+                    }
+                } else {
+                    increaseInfo = '<small class="text-muted">-</small>';
+                }
+
+                // Format time
+                const formattedTime = record.time ? record.time.split('.')[0] : 'N/A';
+
+                tableHtml += `
+                    <tr>
+                        <td>${record.date}</td>
+                        <td>${formattedTime}</td>
+                        <td><strong>${record.tbw.toLocaleString()} GB</strong></td>
+                        <td class="${dailyIncrease > 0 ? 'text-success fw-bold' : 'text-muted'}">
+                            ${increaseInfo}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tableBody.innerHTML = tableHtml;
+            document.getElementById('table-section').style.display = 'block';
+            document.getElementById('table-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        } catch (error) {
+            console.error('Error loading SSD records:', error);
+            alert('Error loading SSD records data.');
+        }
+    }
+
+    // Hide the table section
+    function hideTable() {
+        document.getElementById('table-section').style.display = 'none';
+        currentRecords = [];
+    }
+
+    // Display error message in the UI
+    function showError(message) {
+        const container = document.getElementById('ssds-container');
+        container.innerHTML = `
+            <div class="col-12">
+                <div class="alert alert-danger">
+                    <h5>❌ Connection Error</h5>
+                    <p class="mb-0">${message}</p>
+                    <button class="btn btn-danger btn-sm mt-2" onclick="refreshData()">🔄 Retry Connection</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Update last refresh timestamp
+    function updateLastRefreshTime() {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        document.getElementById('last-update-time').textContent = timeString;
+        document.getElementById('refresh-timestamp').style.display = 'block';
+    }
+
+    // Show success notification
+    function showSuccessNotification() {
+        const notification = document.createElement('div');
+        notification.className = 'alert alert-success position-fixed top-0 start-50 translate-middle-x mt-3';
+        notification.style.zIndex = '9999';
+        notification.innerHTML = '<strong>✓</strong> Data refreshed successfully!';
+        document.body.appendChild(notification);
+        setTimeout(() => notification.remove(), 3000);
+    }
+
+    // Show error notification
+    function showErrorNotification(message) {
+        const notification = document.createElement('div');
+        notification.className = 'alert alert-danger position-fixed top-0 start-50 translate-middle-x mt-3';
+        notification.style.zIndex = '9999';
+        notification.innerHTML = `<strong>✗</strong> ${message}`;
+        document.body.appendChild(notification);
+        setTimeout(() => notification.remove(), 5000);
+    }
+
+    // Auto-refresh data every 60 seconds
+    setInterval(loadSSDs, 60000);
+
+    // Load data when page finishes loading
+    document.addEventListener('DOMContentLoaded', loadSSDs);
+</script>
+</body>
+</html>

@@ -1,5 +1,128 @@
+# ============================================
+# SSD TBW Monitor - Professional .gitignore
+# ============================================
+
+# ============================================
+# Maven / Java Build
+# ============================================
+target/
+*.jar
+*.war
+*.ear
+*.class
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# ============================================
+# Spring Boot
+# ============================================
+HELP.md
+application-local.properties
+application-dev.properties
+
+# ============================================
+# Database
+# ============================================
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# ============================================
+# Logs
+# ============================================
+logs/
+*.log
+*.log.*
+
+# ============================================
+# IDEs
+# ============================================
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# ============================================
+# Operating System
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ============================================
+# Project Documentation (Private)
+# ============================================
 Steps to the Project.txt
 Business logic.txt
 Problem with modified time.txt
 Documentation.txt
-.idea
+notes.txt
+TODO.txt
+
+# ============================================
+# Installer Build Artifacts
+# ============================================
+installer/*.exe
+!installer/TBWMonitorInstaller.exe
+installer/build/
+installer/temp/
+
+# ============================================
+# Temporary Files
+# ============================================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~.nib
+*.bak
+*.cache
+
+# ============================================
+# Security & Credentials
+# ============================================
+*.key
+*.pem
+*.p12
+secrets/
+credentials/

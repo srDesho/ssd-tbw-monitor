@@ -1,0 +1,378 @@
+!define APP_NAME "TBW Monitor"
+!define APP_VERSION "1.0.0"
+!define INSTALL_DIR "C:\TBWMonitor"
+!define JAR_FILE "ssd-tbw-monitoring-api-0.0.1-SNAPSHOT.jar"
+!define SERVICE_NAME "TBWMonitorService"
+!define NSSM "nssm.exe"
+!define SMARTMONTOOLS_SETUP "smartmontools-7.4-1.win32-setup.exe"
+
+; Include necessary libraries
+!include "MUI2.nsh"
+!include "FileFunc.nsh"
+!include "StrFunc.nsh"
+!include "LogicLib.nsh"
+
+; Declare StrStr function
+${StrStr}
+
+; Basic installer configuration
+Name "${APP_NAME}"
+Outfile "TBWMonitorInstaller.exe"
+InstallDir ${INSTALL_DIR}
+RequestExecutionLevel admin
+
+; Variables
+Var JavaPath
+Var JavaExists
+Var JavaVersion
+
+; Abort page customization - must be defined BEFORE pages
+!define MUI_ABORTWARNING
+!define MUI_ABORTWARNING_TEXT "Installation was cancelled.$\r$\n$\r$\nPlease ensure all requirements are met before trying again."
+
+; Installer pages
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_NOAUTOCLOSE
+!insertmacro MUI_PAGE_FINISH
+
+; Uninstaller pages
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+
+; Language
+!insertmacro MUI_LANGUAGE "English"
+
+Section "Install ${APP_NAME}"
+    SetOutPath $TEMP
+    
+    DetailPrint "Checking system requirements..."
+    
+    ; Check if Java JDK 21 or higher is installed
+    DetailPrint "Detecting Java installation..."
+    Call CheckJavaJDK21
+    Pop $JavaExists
+    
+    ${If} $JavaExists == "1"
+        DetailPrint "✓ Java 21+ detected and compatible."
+        
+        ; Find Java path
+        Call FindJavaPath
+        Pop $JavaPath
+        ${If} $JavaPath == ""
+            MessageBox MB_ICONEXCLAMATION|MB_OK "Java 21+ detected but executable path not found.$\n$\nPlease ensure Java is in system PATH and try again."
+            Abort "Java executable not found in PATH"
+        ${EndIf}
+        DetailPrint "✓ Using Java at: $JavaPath"
+    ${Else}
+        ; Java not found or version too old
+        SetErrorLevel 1
+        MessageBox MB_ICONEXCLAMATION|MB_OK "Installation Requirements Not Met$\n$\n\
+Java Runtime Environment 21 or higher is required.$\n$\n\
+Please install Java 21+ from:$\n\
+https://adoptium.net/temurin/releases/?version=21$\n$\n\
+After installing Java, run this installer again."
+        ExecShell "open" "https://adoptium.net/temurin/releases/?version=21"
+        Abort "Java 21+ is required but not installed"
+    ${EndIf}
+
+    ; Check if Smartmontools is installed
+    DetailPrint "Detecting Smartmontools installation..."
+    Call CheckSmartmontools
+    Pop $0
+    ${If} $0 == "1"
+        DetailPrint "Smartmontools is already installed."
+    ${Else}
+        ; Smartmontools not found - install it
+        MessageBox MB_ICONINFORMATION|MB_OK "Smartmontools is required for SSD monitoring.$\n$\nThe installer will now install Smartmontools.$\n$\nPlease complete the Smartmontools installation wizard."
+        
+        DetailPrint "Installing Smartmontools..."
+        File "${SMARTMONTOOLS_SETUP}"
+        ; Execute installer and wait for completion
+        ExecWait '"$TEMP\${SMARTMONTOOLS_SETUP}"' $0
+        Delete "$TEMP\${SMARTMONTOOLS_SETUP}"
+        
+        ; Check exit code - 0 means success
+        ${If} $0 == "0"
+            DetailPrint "Smartmontools installed successfully."
+        ${ElseIf} $0 == "1223"
+            ; User cancelled
+            SetErrorLevel 3
+            MessageBox MB_ICONEXCLAMATION|MB_OK "Installation Cancelled$\n$\n\
+You cancelled the Smartmontools installation.$\n$\n\
+Smartmontools is required for ${APP_NAME} to function."
+            Abort "User cancelled Smartmontools installation"
+        ${Else}
+            ; Show warning but continue - maybe it was already installed
+            DetailPrint "Smartmontools installer returned code $0"
+            MessageBox MB_ICONINFORMATION|MB_OK "Smartmontools installation completed.$\n$\nIf you encounter issues, please ensure Smartmontools is properly installed."
+        ${EndIf}
+    ${EndIf}
+    
+    SmartDone:
+
+    ; Install application files
+    SetOutPath ${INSTALL_DIR}
+    File "${JAR_FILE}"
+    File "${NSSM}"
+
+    ; Create logs and data directories
+    CreateDirectory "$INSTDIR\logs"
+    CreateDirectory "$INSTDIR\data"
+    
+    ; Copy pre-populated database if exists (optional)
+    IfFileExists "tbw_monitor.db" 0 SkipDatabase
+    DetailPrint "Copying pre-configured database..."
+    File /nonfatal /oname=data\tbw_monitor.db "tbw_monitor.db"
+    SkipDatabase:
+
+    ; Configure service with NSSM
+    DetailPrint "Configuring Windows service ${SERVICE_NAME}..."
+    DetailPrint "Java executable: $JavaPath"
+    DetailPrint "JAR file: $INSTDIR\${JAR_FILE}"
+    
+    ; Remove existing service if present
+    ExecWait '"$INSTDIR\${NSSM}" stop ${SERVICE_NAME}' $0
+    ExecWait '"$INSTDIR\${NSSM}" remove ${SERVICE_NAME} confirm' $0
+    Sleep 1000
+    
+    ; Install service with java.exe
+    ExecWait '"$INSTDIR\${NSSM}" install ${SERVICE_NAME} "$JavaPath"' $0
+    ${If} $0 != "0"
+        DetailPrint "ERROR: NSSM install failed with code $0"
+        MessageBox MB_ICONEXCLAMATION "Failed to install service. Check logs at:$\n$INSTDIR\logs"
+    ${EndIf}
+    
+    ; Set application parameters - no spaces in path now, easier to handle
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} AppParameters "-jar $\"$INSTDIR\${JAR_FILE}$\""'
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} AppDirectory "$INSTDIR"'
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} DisplayName "${APP_NAME}"'
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} Description "SSD TBW Monitoring Service"'
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} AppStdout "$INSTDIR\logs\service.log"'
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} AppStderr "$INSTDIR\logs\service-error.log"'
+    
+    ; Configure log rotation
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} AppRotateFiles 1'
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} AppRotateBytes 10485760'
+    
+    ; Set startup type to automatic
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} Start SERVICE_AUTO_START'
+    
+    ; Configure automatic restart on clock manipulation (exit code 10)
+    DetailPrint "Configuring automatic restart on system clock changes..."
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} AppExit Default Restart'
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} AppExit 10 Restart'
+    ExecWait '"$INSTDIR\${NSSM}" set ${SERVICE_NAME} AppRestartDelay 3000'
+
+    ; Start the service
+    DetailPrint "Starting service ${SERVICE_NAME}..."
+    ExecWait '"$INSTDIR\${NSSM}" start ${SERVICE_NAME}' $0
+    ${If} $0 == "0"
+        DetailPrint "Service started successfully"
+        Sleep 2000
+    ${Else}
+        DetailPrint "Service start returned code $0"
+        MessageBox MB_ICONEXCLAMATION|MB_OK "Service installation completed but failed to start.$\n$\nError code: $0$\n$\nCheck logs at:$\n$INSTDIR\logs\service-error.log$\n$\nYou can start the service manually from Windows Services."
+    ${EndIf}
+
+    ; Create registry entries for uninstaller
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "UninstallString" "$INSTDIR\Uninstall.exe"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayVersion" "${APP_VERSION}"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "Publisher" "TBW Monitor"
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoModify" 1
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoRepair" 1
+
+    ; Create uninstaller
+    WriteUninstaller "$INSTDIR\Uninstall.exe"
+
+    MessageBox MB_OK "${APP_NAME} has been successfully installed and is running as a Windows service.$\n$\nThe service will automatically restart if system clock changes are detected."
+SectionEnd
+
+Section "un.Uninstall"
+    ; Stop and remove service
+    DetailPrint "Stopping service ${SERVICE_NAME}..."
+    ExecWait '"$INSTDIR\${NSSM}" stop ${SERVICE_NAME}'
+    Sleep 2000
+    
+    DetailPrint "Removing service ${SERVICE_NAME}..."
+    ExecWait '"$INSTDIR\${NSSM}" remove ${SERVICE_NAME} confirm'
+
+    ; Delete application files
+    Delete "$INSTDIR\${JAR_FILE}"
+    Delete "$INSTDIR\${NSSM}"
+    Delete "$INSTDIR\Uninstall.exe"
+    
+    ; Ask user about keeping data
+    MessageBox MB_YESNO "Do you want to delete all log files and database?$\n$\nSelect 'No' to keep your monitoring history." IDYES DeleteAllData IDNO KeepData
+    
+    DeleteAllData:
+        DetailPrint "Removing all data..."
+        RMDir /r "$INSTDIR\logs"
+        RMDir /r "$INSTDIR\data"
+        Goto ContinueUninstall
+    
+    KeepData:
+        DetailPrint "Preserving logs and database files at: $INSTDIR"
+        MessageBox MB_OK "Data preserved at:$\n$INSTDIR\logs$\n$INSTDIR\data"
+    
+    ContinueUninstall:
+    RMDir "$INSTDIR"
+
+    ; Remove registry entries
+    DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
+
+    MessageBox MB_OK "${APP_NAME} has been uninstalled successfully."
+SectionEnd
+
+;=============================================================================
+; HELPER FUNCTIONS
+;=============================================================================
+
+Function CheckJavaJDK21
+    Push $0
+    Push $1
+    Push $2
+    Push $3
+    
+    StrCpy $0 "0" ; Java not installed by default
+    StrCpy $1 "0" ; Java version
+    
+    ; Create temp batch file to capture java -version output
+    FileOpen $2 "$TEMP\check_java.bat" w
+    FileWrite $2 '@echo off$\r$\n'
+    FileWrite $2 'java -version 2>&1$\r$\n'
+    FileClose $2
+    
+    ; Execute batch and capture output
+    nsExec::ExecToStack '"$TEMP\check_java.bat"'
+    Pop $2 ; Exit code
+    Pop $3 ; Output
+    
+    Delete "$TEMP\check_java.bat"
+    
+    ${If} $2 == "0" ; Java command exists
+        DetailPrint "Java detection output: $3"
+        
+        ; Check for Java 21+
+        ${StrStr} $4 $3 '"21.'
+        ${If} $4 != ""
+            StrCpy $0 "1"
+            StrCpy $1 "21"
+            Goto JavaFound
+        ${EndIf}
+        
+        ${StrStr} $4 $3 '"22.'
+        ${If} $4 != ""
+            StrCpy $0 "1"
+            StrCpy $1 "22"
+            Goto JavaFound
+        ${EndIf}
+        
+        ${StrStr} $4 $3 '"23.'
+        ${If} $4 != ""
+            StrCpy $0 "1"
+            StrCpy $1 "23"
+            Goto JavaFound
+        ${EndIf}
+        
+        ${StrStr} $4 $3 '"24.'
+        ${If} $4 != ""
+            StrCpy $0 "1"
+            StrCpy $1 "24"
+            Goto JavaFound
+        ${EndIf}
+        
+        ; If we get here, Java exists but version < 21
+        ${StrStr} $4 $3 '"1.8'
+        ${If} $4 != ""
+            StrCpy $1 "8"
+            Goto JavaFound
+        ${EndIf}
+        
+        ${StrStr} $4 $3 '"11.'
+        ${If} $4 != ""
+            StrCpy $1 "11"
+            Goto JavaFound
+        ${EndIf}
+        
+        ${StrStr} $4 $3 '"17.'
+        ${If} $4 != ""
+            StrCpy $1 "17"
+            Goto JavaFound
+        ${EndIf}
+        
+        ; Generic old version
+        StrCpy $1 "unknown"
+    ${EndIf}
+    
+    JavaFound:
+    Pop $3
+    Pop $2
+    Pop $1
+    Exch $0 ; Return: 1 if Java 21+, 0 otherwise
+FunctionEnd
+
+Function FindJavaPath
+    Push $0
+    StrCpy $0 ""
+
+    ; Try to find java.exe using 'where' command
+    nsExec::ExecToStack 'where java'
+    Pop $1 ; Exit code
+    Pop $2 ; Output
+    
+    ${If} $1 == "0"
+        ${If} $2 != ""
+            ; Extract first line (primary java path)
+            StrCpy $0 $2 260
+            ; Remove newline characters
+            ${StrStr} $3 $0 "$\r"
+            ${If} $3 != ""
+                StrLen $4 $0
+                StrLen $5 $3
+                IntOp $6 $4 - $5
+                StrCpy $0 $0 $6
+            ${EndIf}
+        ${EndIf}
+    ${EndIf}
+    
+    ; Fallback: check common Java installation paths
+    ${If} $0 == ""
+        IfFileExists "C:\Program Files\Java\jdk-21\bin\java.exe" 0 +3
+        StrCpy $0 "C:\Program Files\Java\jdk-21\bin\java.exe"
+        Goto FoundJava
+        
+        IfFileExists "C:\Program Files\Eclipse Adoptium\jdk-21\bin\java.exe" 0 +3
+        StrCpy $0 "C:\Program Files\Eclipse Adoptium\jdk-21\bin\java.exe"
+        Goto FoundJava
+        
+        IfFileExists "C:\Program Files\Common Files\Oracle\Java\javapath\java.exe" 0 +2
+        StrCpy $0 "C:\Program Files\Common Files\Oracle\Java\javapath\java.exe"
+    ${EndIf}
+    
+    FoundJava:
+    Exch $0
+FunctionEnd
+
+Function CheckSmartmontools
+    Push $0
+    StrCpy $0 "0"
+    nsExec::ExecToStack 'smartctl --version'
+    Pop $1
+    Pop $2
+    ${If} $1 == "0"
+        StrCpy $0 "1"
+    ${EndIf}
+    Exch $0
+FunctionEnd
+
+Function .onInit
+    System::Call 'kernel32::CreateMutexA(i 0, i 0, t "${APP_NAME}Installer") i .r1 ?e'
+    Pop $0
+    ${If} $0 != 0
+        MessageBox MB_OK|MB_ICONEXCLAMATION "The installer is already running."
+        Abort
+    ${EndIf}
+FunctionEnd

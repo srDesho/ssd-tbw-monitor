@@ -14,32 +14,28 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * This class implements the business logic for managing SSDs.
- * It provides methods to detect, register, retrieve, and manage monitoring status for SSD entities.
- */
+// Service implementation for SSD device management and registration
+// Handles SSD detection, database registration, and monitoring status control
+// Provides startup initialization and manual monitoring toggle functionality
 @Service
 public class SSDServiceImpl implements ISSDService {
 
     private static final Logger logger = LoggerFactory.getLogger(SSDServiceImpl.class);
 
-    // Dependencies used for mapping, database access, and hardware operations.
+    // Dependencies for data mapping, database operations, and hardware communication
     private final SSDMapper ssdMapper;
     private final SSDRepository ssdRepository;
     private final IHardwareService hardwareService;
 
-    // Constructor for dependency injection.
+    // Constructor for dependency injection of required components
     public SSDServiceImpl(SSDMapper ssdMapper, SSDRepository ssdRepository, IHardwareService hardwareService) {
         this.ssdMapper = ssdMapper;
         this.ssdRepository = ssdRepository;
         this.hardwareService = hardwareService;
     }
 
-    /**
-     * Retrieves all SSD entities from the database and maps them to response DTOs.
-     *
-     * @return a list of SSDResponseDTO containing the details of the SSDs.
-     */
+    // Retrieves all SSD entities from database and converts to response DTOs
+    // Used for displaying SSD inventory in user interface
     @Override
     @Transactional(readOnly = true)
     public List<SSDResponseDTO> findAll() {
@@ -49,45 +45,43 @@ public class SSDServiceImpl implements ISSDService {
         return ssdMapper.toSSDResponseDTOList(ssdEntityList);
     }
 
-    /**
-     * Detects SSDs using hardware services and registers them if they are not already in the database.
-     */
+    // Detects available SSDs using hardware service and registers new devices
+    // Updates monitoring status for existing SSDs and creates records for new ones
     @Override
     @Transactional
     public void detectAndRegisterSsd() {
         logger.debug("Starting SSD detection and registration process");
 
-        // Detect SSDs using the hardware service.
+        // Use hardware service to scan for connected storage devices
         List<SSDResponseDTO> detectedSSDs = hardwareService.detectSSDsUsingSmartctl();
         logger.info("Detected {} SSDs", detectedSSDs.size());
 
         for (SSDResponseDTO ssd : detectedSSDs) {
             try {
-                // Check if the SSD is already registered.
+                // Check if SSD already exists in database using unique model-serial combination
                 SSDEntity existingSsd = this.ssdRepository.findByModelAndSerial(ssd.getModel(), ssd.getSerial());
 
                 if (existingSsd != null) {
                     logger.warn("SSD with model {} and serial {} is already registered", ssd.getModel(), ssd.getSerial());
-                    // Update isMonitored to true if it's currently false
+                    // Enable monitoring if previously disabled
                     if (!existingSsd.getIsMonitored()) {
                         existingSsd.setIsMonitored(true);
                         this.ssdRepository.save(existingSsd);
                         logger.info("Updated monitoring status to true for SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial());
                     }
                 } else {
-                    // Get the current date and time.
+                    // Create new SSD entity for previously unregistered device
                     LocalDateTime now = LocalDateTime.now();
 
-                    // Build a new SSD entity and save it to the database.
                     SSDEntity ssdEntity = SSDEntity.builder()
                             .model(ssd.getModel())
                             .serial(ssd.getSerial())
                             .capacityGB(ssd.getCapacityGB())
                             .registrationDate(now)
-                            .isMonitored(false) // Initially false
+                            .isMonitored(false) // Initially false until explicitly enabled
                             .build();
 
-                    // Save the entity and map it to a response DTO.
+                    // Persist new entity and convert to response format
                     SSDEntity savedEntity = this.ssdRepository.save(ssdEntity);
                     ssdMapper.toResponseDTO(savedEntity);
                     logger.info("Successfully registered new SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial());
@@ -99,45 +93,39 @@ public class SSDServiceImpl implements ISSDService {
         }
     }
 
-    /**
-     * Detects SSDs using hardware services and registers them if they are not already in the database.
-     *
-     */
+    // Detects and registers SSDs during application startup
+    // Sets initial monitoring status to true for new devices detected at startup
     @Transactional
     public void detectAndRegisterSsdOnStartup() {
         logger.debug("Starting SSD detection and registration process on startup");
 
-        // Detect SSDs using the hardware service.
         List<SSDResponseDTO> detectedSSDs = hardwareService.detectSSDsUsingSmartctl();
         logger.info("Detected {} SSDs", detectedSSDs.size());
 
         for (SSDResponseDTO ssd : detectedSSDs) {
             try {
-                // Check if the SSD is already registered.
                 SSDEntity existingSsd = this.ssdRepository.findByModelAndSerial(ssd.getModel(), ssd.getSerial());
 
                 if (existingSsd != null) {
                     logger.warn("SSD with model {} and serial {} is already registered", ssd.getModel(), ssd.getSerial());
-                    // Update isMonitored to true if it's currently false
+                    // Enable monitoring for existing SSDs found during startup
                     if (!existingSsd.getIsMonitored()) {
                         existingSsd.setIsMonitored(true);
                         this.ssdRepository.save(existingSsd);
                         logger.info("Updated monitoring status to true for SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial());
                     }
                 } else {
-                    // Get the current date and time.
+                    // Create new SSD entity with monitoring enabled by default for startup detection
                     LocalDateTime now = LocalDateTime.now();
 
-                    // Build a new SSD entity and save it to the database.
                     SSDEntity ssdEntity = SSDEntity.builder()
                             .model(ssd.getModel())
                             .serial(ssd.getSerial())
                             .capacityGB(ssd.getCapacityGB())
                             .registrationDate(now)
-                            .isMonitored(true) // Initially true
+                            .isMonitored(true) // Enabled by default for startup detection
                             .build();
 
-                    // Save the entity and map it to a response DTO.
                     SSDEntity savedEntity = this.ssdRepository.save(ssdEntity);
                     ssdMapper.toResponseDTO(savedEntity);
                     logger.info("Successfully registered new SSD: model={}, serial={}", ssd.getModel(), ssd.getSerial());
@@ -149,23 +137,19 @@ public class SSDServiceImpl implements ISSDService {
         }
     }
 
-    /**
-     * Toggles the monitoring status of a specific SSD by its ID.
-     *
-     * @param id      the ID of the SSD to toggle monitoring.
-     * @param monitor the new monitoring status (true to enable, false to disable).
-     */
+    // Enables or disables monitoring for specific SSD identified by ID
+    // Used for manual control of TBW data collection for individual drives
     @Override
     @Transactional
     public void toggleMonitoring(Long id, boolean monitor) {
         logger.debug("Attempting to toggle monitoring status to {} for SSD with ID: {}", monitor, id);
 
         try {
-            // Retrieve the SSD entity by its ID or throw an exception if not found.
+            // Retrieve SSD entity or throw exception if not found
             SSDEntity ssd = ssdRepository.findById(id)
                     .orElseThrow(() -> new IllegalArgumentException("SSD Not found."));
 
-            // Update the monitoring status and save the entity.
+            // Update monitoring status and persist changes
             ssd.setIsMonitored(monitor);
             this.ssdRepository.save(ssd);
             logger.info("Successfully updated monitoring status to {} for SSD: {}", monitor, ssd.getModel());

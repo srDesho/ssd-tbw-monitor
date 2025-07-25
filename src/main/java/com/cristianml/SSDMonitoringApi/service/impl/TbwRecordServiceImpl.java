@@ -11,6 +11,7 @@ import com.cristianml.SSDMonitoringApi.service.ITbwRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -18,27 +19,22 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * This class implements the business logic for managing TBW (Total Bytes Written) records.
- * It includes methods to retrieve, automatically register, and manually register TBW entries for SSDs.
- * Additionally, it handles time-based logic for auto-registering TBW records.
- */
+// Service implementation for TBW (Total Bytes Written) record management
+// Handles automatic registration, updating, and retrieval of SSD write endurance data
+// Processes each SSD independently to prevent single device failures from affecting others
 @Service
 public class TbwRecordServiceImpl implements ITbwRecord {
 
-    // Repositories and mappers used for database access and data transformation.
     private final TbwRecordRepository tbwRecordRepository;
     private final SSDRepository ssdRepository;
     private final IHardwareService hardwareService;
     private final TbwRecordMapper tbwRecordMapper;
 
-    // Logger for logging important information.
     private static final Logger logger = LoggerFactory.getLogger(TbwRecordServiceImpl.class);
 
-    // Threshold for TBW update in bytes (3 GB).
-    private static final long TBW_UPDATE_THRESHOLD = 3L * 1024 * 1024 * 1024; // 3 GB in bytes.
+    // Threshold for TBW update detection (3 GB in bytes)
+    private static final long TBW_UPDATE_THRESHOLD = 3L * 1024 * 1024 * 1024;
 
-    // Constructor for dependency injection.
     public TbwRecordServiceImpl(TbwRecordRepository tbwRecordRepository, SSDRepository ssdRepository, IHardwareService hardwareService, TbwRecordMapper tbwRecordMapper) {
         this.tbwRecordRepository = tbwRecordRepository;
         this.ssdRepository = ssdRepository;
@@ -46,11 +42,7 @@ public class TbwRecordServiceImpl implements ITbwRecord {
         this.tbwRecordMapper = tbwRecordMapper;
     }
 
-    /**
-     * Retrieves all TBW records from the database and maps them to response DTOs.
-     *
-     * @return a list of TBW records mapped to DTOs.
-     */
+    // Retrieves all TBW records from database for reporting and display
     @Override
     @Transactional(readOnly = true)
     public List<TbwRecordResponseDTO> findAll() {
@@ -60,21 +52,15 @@ public class TbwRecordServiceImpl implements ITbwRecord {
         return this.tbwRecordMapper.toTbwRecordResponseDTOList(tbwRecords);
     }
 
-    /**
-     * Automatically registers TBW records for all monitored SSDs if no record exists for the current date.
-     * This method ensures that TBW is registered for each SSD individually, even if some SSDs already have records.
-     *
-     * @return true if at least one TBW record was registered, false otherwise.
-     */
+    // Automatically registers TBW for all monitored SSDs that don't have today's record
+    // Prevents registration if system date appears manipulated (delayed)
     @Override
-    @Transactional
     public boolean autoRegisterTBW() {
         logger.info("Executing autoRegisterTBW...");
 
-        // Get record with the highest date if exists
+        // Check for potential date manipulation by comparing with latest record
         Optional<TbwRecordEntity> higherDateRecordOpt = this.tbwRecordRepository.findTopByOrderByDateDesc();
 
-        // If there's a record, validate the date
         if (higherDateRecordOpt.isPresent()) {
             TbwRecordEntity higherDateRecord = higherDateRecordOpt.get();
             if (LocalDate.now().isBefore(higherDateRecord.getDate())) {
@@ -89,101 +75,84 @@ public class TbwRecordServiceImpl implements ITbwRecord {
         LocalTime currentTime = LocalTime.now();
         logger.debug("Current date: {}, Current time: {}", currentDate, currentTime);
 
-        // Get all monitored SSDs.
+        // Get all SSDs currently marked for monitoring
         List<SSDEntity> ssdList = ssdRepository.findByIsMonitored(true);
         logger.info("Found {} monitored SSDs", ssdList.size());
 
         boolean anyRegistered = false;
 
-        // Register TBW for each monitored SSD if no record exists for the current date.
+        // Process each SSD independently to prevent single failure from blocking others
         for (SSDEntity ssd : ssdList) {
             try {
-                Optional<TbwRecordEntity> existingRecord = tbwRecordRepository.findBySsdAndDate(ssd, currentDate);
-
-                if (existingRecord.isEmpty()) {
-                    logger.info("Registering TBW for SSD: {}", ssd.getModel());
-                    registerTBW(ssd, currentDate, currentTime);
-                    anyRegistered = true; // Indicates that at least one TBW was registered.
-                } else {
-                    logger.info("TBW already registered today for SSD: {}", ssd.getModel());
+                boolean registered = processSsdRegistration(ssd, currentDate, currentTime);
+                if (registered) {
+                    anyRegistered = true;
                 }
             } catch (Exception e) {
-                logger.error("Error registering TBW for SSD: {}", ssd.getModel(), e);
-                throw e;
+                logger.error("Error processing SSD: {}. Continuing with others.", ssd.getModel(), e);
             }
         }
 
         logger.info("autoRegisterTBW completed. Registered new TBW records: {}", anyRegistered);
-        return anyRegistered; // Return true if at least one TBW was registered, otherwise false.
+        return anyRegistered;
     }
 
+    // Registers TBW record for individual SSD in separate transaction
+    // Returns false if SSD is unavailable (-1) or already registered today
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean processSsdRegistration(SSDEntity ssd, LocalDate currentDate, LocalTime currentTime) {
+        try {
+            Optional<TbwRecordEntity> existingRecord = tbwRecordRepository.findBySsdAndDate(ssd, currentDate);
 
+            if (existingRecord.isEmpty()) {
+                logger.info("Registering TBW for SSD: {}", ssd.getModel());
 
-    /**
-     * Registers a TBW record for a given SSD, retrieving the current TBW value from the hardware service.
-     *
-     * @param ssd  the SSD for which the TBW record is being registered.
-     * @param date the date of the TBW record.
-     * @param time the time of the TBW record.
-     * @return the registered TBW record.
-     */
-    private TbwRecordEntity registerTBW(SSDEntity ssd, LocalDate date, LocalTime time) {
-        logger.debug("Registering TBW for SSD: {}", ssd.getModel());
+                // Get current TBW value from hardware service
+                long tbw = hardwareService.getTBWFromSMART(ssd.getModel());
 
-        // Retrieve the TBW value for the given SSD model from the hardware service.
-        Long tbw = this.hardwareService.getTBWFromSMART(ssd.getModel());
-        logger.info("Retrieved TBW value: {} for SSD: {}", tbw, ssd.getModel());
+                // Check for hardware failure indication (-1 means SSD unavailable)
+                if (tbw == -1) {
+                    logger.warn("Skipped TBW registration for unavailable SSD: {}", ssd.getModel());
+                    return false;
+                }
 
-        // Save the TBW record.
-        return saveTbwRecord(ssd, date, time, tbw);
+                logger.info("Retrieved TBW value: {} for SSD: {}", tbw, ssd.getModel());
+
+                // Create and persist new TBW record
+                TbwRecordEntity tbwRecord = TbwRecordEntity.builder()
+                        .ssd(ssd)
+                        .date(currentDate)
+                        .time(currentTime)
+                        .tbw(tbw)
+                        .build();
+
+                tbwRecordRepository.save(tbwRecord);
+                logger.info("Successfully saved TBW record for SSD: {}", ssd.getModel());
+                return true;
+            } else {
+                logger.info("TBW already registered today for SSD: {}", ssd.getModel());
+                return false;
+            }
+        } catch (Exception e) {
+            logger.error("Error registering TBW for SSD: {}", ssd.getModel(), e);
+            return false;
+        }
     }
 
-    /**
-     * Saves a TBW record to the repository with the provided SSD, date, time, and TBW value.
-     *
-     * @param ssd  the SSD associated with the TBW record.
-     * @param date the date of the TBW record.
-     * @param time the time of the TBW record.
-     * @param tbw  the TBW value to be saved.
-     * @return the saved TBW record.
-     */
-    private TbwRecordEntity saveTbwRecord(SSDEntity ssd, LocalDate date, LocalTime time, Long tbw) {
-        logger.debug("Saving TBW record for SSD: {}", ssd.getModel());
-
-        // Build a new TBW record entity with the provided details.
-        TbwRecordEntity tbwRecord = TbwRecordEntity.builder()
-                .ssd(ssd)
-                .date(date)
-                .time(time)
-                .tbw(tbw)
-                .build();
-
-        // Persist the TBW record to the database and return it.
-        TbwRecordEntity savedRecord = this.tbwRecordRepository.save(tbwRecord);
-        logger.info("Successfully saved TBW record for SSD: {}", ssd.getModel());
-        return savedRecord;
-    }
-
-    /**
-     * Retrieves the current TBW value for a specific SSD from the hardware service.
-     *
-     * @param ssdId the ID of the SSD for which the current TBW value is being retrieved.
-     * @return the current TBW value for the specified SSD.
-     */
+    // Retrieves current TBW value for specific SSD by ID
+    // Used for manual queries and real-time status checks
     @Override
     @Transactional(readOnly = true)
     public long getCurrentTbwForSSD(Long ssdId) {
         logger.debug("Retrieving current TBW for SSD ID: {}", ssdId);
 
         try {
-            // Retrieve the SSD entity by ID, or throw an exception if not found.
             SSDEntity ssd = ssdRepository.findById(ssdId)
                     .orElseThrow(() -> {
                         logger.error("SSD with ID {} not found", ssdId);
                         return new IllegalArgumentException("SSD with id " + ssdId + " not found");
                     });
 
-            // Retrieve the TBW value for the given SSD model from the hardware service.
             long tbw = this.hardwareService.getTBWFromSMART(ssd.getModel());
             logger.info("Retrieved current TBW value: {} for SSD ID: {}", tbw, ssdId);
             return tbw;
@@ -193,49 +162,59 @@ public class TbwRecordServiceImpl implements ITbwRecord {
         }
     }
 
-    /**
-     * Compares the recorded TBW with the current TBW from the hardware service and updates the record if necessary.
-     * This method ensures that the TBW records are up-to-date with the actual values from the SSDs.
-     *
-     * @param currentDate the current date to check records for.
-     */
+    // Checks and updates existing TBW records if significant increase detected
+    // Compares current hardware reading with stored value for each SSD
     public void checkAndUpdateTbwRecords(LocalDate currentDate) {
         logger.info("Running checkAndUpdateTbwRecords method for date: {}", currentDate);
 
         try {
-            // Get all monitored SSDs.
             List<SSDEntity> ssdList = ssdRepository.findByIsMonitored(true);
             logger.info("Found {} monitored SSDs", ssdList.size());
 
-            // Iterate through each SSD and check/update its TBW record.
+            // Process each SSD update independently
             for (SSDEntity ssd : ssdList) {
                 try {
-                    // Find the existing TBW record for the current date.
-                    Optional<TbwRecordEntity> existingRecord = tbwRecordRepository.findBySsdAndDate(ssd, currentDate);
-
-                    if (existingRecord.isPresent()) {
-                        TbwRecordEntity record = existingRecord.get();
-                        long recordedTbw = record.getTbw();
-                        logger.debug("Recorded TBW for SSD {}: {}", ssd.getModel(), recordedTbw);
-
-                        // Retrieve the current TBW value from the hardware service.
-                        long currentTbw = this.hardwareService.getTBWFromSMART(ssd.getModel());
-                        logger.debug("Current TBW for SSD {}: {}", ssd.getModel(), currentTbw);
-
-                        // If the current TBW is greater than or equal to the recorded TBW by 3 GB, update the record.
-                        if (currentTbw - recordedTbw >= TBW_UPDATE_THRESHOLD) {
-                            System.out.println("ACTUALIZANDO TBW A: " + currentTbw); // Debug print
-                            logger.info("Updating TBW record for SSD: {} on date: {}", ssd.getModel(), currentDate);
-                            record.setTbw(currentTbw);
-                            tbwRecordRepository.save(record);
-                        }
-                    }
+                    processSsdUpdate(ssd, currentDate);
                 } catch (Exception e) {
-                    logger.error("Error updating TBW record for SSD: {}", ssd.getModel(), e);
+                    logger.error("Error processing update for SSD: {}. Continuing with others.", ssd.getModel(), e);
                 }
             }
         } catch (Exception e) {
             logger.error("Error while checking and updating TBW records", e);
+        }
+    }
+
+    // Updates existing TBW record if current value exceeds stored value by threshold
+    // Runs in separate transaction to maintain data consistency
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void processSsdUpdate(SSDEntity ssd, LocalDate currentDate) {
+        try {
+            Optional<TbwRecordEntity> existingRecord = tbwRecordRepository.findBySsdAndDate(ssd, currentDate);
+
+            if (existingRecord.isPresent()) {
+                TbwRecordEntity record = existingRecord.get();
+                long recordedTbw = record.getTbw();
+                logger.debug("Recorded TBW for SSD {}: {}", ssd.getModel(), recordedTbw);
+
+                long currentTbw = hardwareService.getTBWFromSMART(ssd.getModel());
+
+                // Skip update if SSD is currently unavailable
+                if (currentTbw == -1) {
+                    logger.warn("Skipped update for unavailable SSD: {}", ssd.getModel());
+                    return;
+                }
+
+                logger.debug("Current TBW for SSD {}: {}", ssd.getModel(), currentTbw);
+
+                // Update record only if significant increase detected (3+ GB)
+                if (currentTbw - recordedTbw >= TBW_UPDATE_THRESHOLD) {
+                    logger.info("Updating TBW record for SSD: {} on date: {}", ssd.getModel(), currentDate);
+                    record.setTbw(currentTbw);
+                    tbwRecordRepository.save(record);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error updating TBW for SSD: {}", ssd.getModel(), e);
         }
     }
 }

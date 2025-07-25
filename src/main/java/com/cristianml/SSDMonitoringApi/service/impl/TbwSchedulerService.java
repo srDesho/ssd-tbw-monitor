@@ -15,11 +15,8 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 
-/**
- * This class handles the scheduling of TBW (Total Bytes Written) registration tasks.
- * It ensures that TBW records are automatically registered within a specific time range (17:00 - 00:00)
- * and handles day changes to reactivate the scheduler.
- */
+// Manages scheduled TBW registration with time-based execution windows
+// Ensures automatic data collection during specified daily time range (17:00 - 00:00)
 @Service
 public class TbwSchedulerService {
 
@@ -28,14 +25,14 @@ public class TbwSchedulerService {
     private final TbwRecordServiceImpl tbwRecordService;
     private final TimeService timeService;
     private final TbwRecordRepository tbwRecordRepository;
-    private final SSDServiceImpl ssdService; // Inject SSDServiceImpl
+    private final SSDServiceImpl ssdService;
 
-    // Start and end time for the scheduler.
-    private static final LocalTime START_TIME = LocalTime.of(17, 0); // 17:00
-    private static final LocalTime END_TIME = LocalTime.of(0, 0);    // 00:00 (midnight)
+    // Daily execution window boundaries for TBW registration
+    private static final LocalTime START_TIME = LocalTime.of(17, 0); // 5:00 PM
+    private static final LocalTime END_TIME = LocalTime.of(0, 0);    // 12:00 AM (midnight)
 
-    // Control flags.
-    private boolean shouldRunScheduler = false; // Initially disabled until initialization.
+    // Control flag to enable/disable scheduler based on time validation
+    private boolean shouldRunScheduler = false;
 
     public TbwSchedulerService(TbwRecordServiceImpl tbwRecordService, TimeService timeService, TbwRecordRepository tbwRecordRepository, SSDServiceImpl ssdService) {
         this.tbwRecordService = tbwRecordService;
@@ -44,18 +41,15 @@ public class TbwSchedulerService {
         this.ssdService = ssdService;
     }
 
-    /**
-     * Initializes the scheduler when the application starts.
-     * Checks if the server started within the allowed time range (17:00 - 00:00).
-     * If so, enables the scheduler; otherwise, disables it.
-     */
+    // Initializes scheduler on application startup
+    // Detects available SSDs and validates current time against execution window
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         logger.info("Initializing TBW Scheduler Service");
 
         try {
-            // Detect and register SSDs on startup
-            ssdService.detectAndRegisterSsdOnStartup(); // Call the new method
+            // Register all detected SSDs on application startup
+            ssdService.detectAndRegisterSsdOnStartup();
 
             LocalDateTime now = timeService.getCurrentDateTime();
             LocalTime currentTime = now.toLocalTime();
@@ -74,12 +68,9 @@ public class TbwSchedulerService {
         }
     }
 
-    /**
-     * Scheduled task that runs every minute to check if the TBW registration should be executed.
-     * It ensures that the scheduler only runs within the allowed time range (17:00 - 00:00)
-     * and handles day changes to reactivate the scheduler.
-     */
-    @Scheduled(cron = "0 */1 * * * *")     //fixedRate = 20000
+    // Main scheduled task executed every minute
+    // Manages TBW registration workflow with validation checks
+    @Scheduled(cron = "0 */1 * * * *")
     @Transactional
     public void scheduleAutoRegisterTBW() {
         logger.debug("Starting scheduled TBW registration check");
@@ -89,10 +80,10 @@ public class TbwSchedulerService {
             LocalDate currentDate = currentDateTime.toLocalDate();
             LocalTime currentTime = currentDateTime.toLocalTime();
 
-            // Delete future records before attempting to register TBW.
+            // Clean up any future-dated records before processing
             deleteFutureRecords();
 
-            // Verify records exist for current date
+            // Check if records already exist for current date
             boolean recordsExist = this.tbwRecordRepository.existsByDate(currentDate);
             if (!recordsExist) {
                 logger.warn("No TBW records found for date: {}. Skipping update.", currentDate);
@@ -102,19 +93,19 @@ public class TbwSchedulerService {
                 return;
             }
 
-            // Schedule time validation
+            // Validate current time is within allowed execution window
             if (!isWithinScheduleTime(currentTime)) {
                 logger.debug("Current time {} is outside allowed range (17:00 - 00:00)", currentTime);
                 return;
             }
 
-            // System date validation
+            // Validate system date hasn't been manipulated
             if (!isSystemDateValid()) {
                 logger.warn("System date validation failed. Current system time: {}", LocalDateTime.now());
                 return;
             }
 
-            // TBW Registration
+            // Execute automatic TBW registration for all monitored SSDs
             boolean tbwRegistered = tbwRecordService.autoRegisterTBW();
             logger.info("TBW registration attempt completed. Success: {}", tbwRegistered);
 
@@ -123,12 +114,8 @@ public class TbwSchedulerService {
         }
     }
 
-    /**
-     * Checks if the current time is within the allowed schedule range (17:00 - 00:00).
-     *
-     * @param now the current time to check.
-     * @return true if the current time is within the allowed range, false otherwise.
-     */
+    // Determines if current time falls within daily execution window
+    // Handles midnight crossing (17:00 to 00:00 next day)
     private boolean isWithinScheduleTime(LocalTime now) {
         boolean isWithinRange = START_TIME.isBefore(END_TIME) ?
                 (now.isAfter(START_TIME) && now.isBefore(END_TIME)) :
@@ -138,22 +125,16 @@ public class TbwSchedulerService {
         return isWithinRange;
     }
 
-    /**
-     * Scheduled task that runs daily at 17:00 to re-enable the scheduler.
-     * This ensures that the scheduler is activated every day at the start of the allowed time range.
-     */
+    // Daily reactivation task executed at 17:00
+    // Enables scheduler for next execution window
     @Scheduled(cron = "0 0 17 * * ?")
     public void enableScheduler() {
         logger.info("Daily scheduler activation triggered at {}", LocalTime.now());
         shouldRunScheduler = true;
     }
 
-    /**
-     * Validates the system date by comparing it with the API date.
-     * If the system date is manipulated (ahead or behind the API date), it returns false.
-     *
-     * @return true if the system date is valid, false otherwise.
-     */
+    // Validates system date integrity by comparing with external time API
+    // Prevents TBW registration if system clock appears manipulated
     private boolean isSystemDateValid() {
         try {
             LocalDateTime systemDateTime = LocalDateTime.now();
@@ -169,9 +150,8 @@ public class TbwSchedulerService {
         }
     }
 
-    /**
-     * Deletes future records from the database.
-     */
+    // Removes any future-dated TBW records from database
+    // Maintains data integrity by preventing records with future timestamps
     @Transactional
     public void deleteFutureRecords() {
         logger.debug("Starting future records cleanup");
@@ -194,7 +174,7 @@ public class TbwSchedulerService {
             }
         } catch (Exception e) {
             logger.error("Failed to delete future records", e);
-            throw e; // Propagar para rollback de transacción
+            throw e;
         }
     }
 }

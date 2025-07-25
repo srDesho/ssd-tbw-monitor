@@ -10,17 +10,17 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
 
-/**
- * Monitors system clock for manipulation and triggers application restart if detected.
- * Prevents inconsistent state when system time is changed backward or forward unexpectedly.
- */
+// Service implementation for system clock integrity monitoring
+// Detects unexpected time changes and triggers application restart when manipulation is detected
+// Prevents data corruption from system clock adjustments during TBW recording
 @Service
 public class ClockMonitorService {
 
     private static final Logger logger = LoggerFactory.getLogger(ClockMonitorService.class);
     private final ApplicationContext applicationContext;
 
-    // Tolerance: 2 minutes difference is considered clock manipulation
+    // Maximum allowed time drift between scheduled checks (2 minutes)
+    // Prevents false positives while detecting significant time manipulation
     private static final long MAX_TIME_DRIFT_SECONDS = 120;
 
     private Instant lastCheckTime;
@@ -31,18 +31,16 @@ public class ClockMonitorService {
         logger.info("Clock monitor initialized at {}", lastCheckTime);
     }
 
-    /**
-     * Checks every minute if system clock has been manipulated.
-     * If time jump exceeds threshold, triggers application restart.
-     */
-    @Scheduled(fixedRate = 60000) // Every 1 minute
+    // Scheduled task that monitors system clock integrity every minute
+    // Compares elapsed time between checks to detect unexpected time jumps
+    @Scheduled(fixedRate = 60000) // Executes every 60 seconds
     public void checkClockIntegrity() {
         Instant currentTime = Instant.now();
         Duration elapsed = Duration.between(lastCheckTime, currentTime);
         long elapsedSeconds = elapsed.getSeconds();
 
-        // Expected: ~60 seconds between checks
-        // If difference is > 120 seconds, clock was manipulated
+        // Expected elapsed time is approximately 60 seconds between checks
+        // Significant deviation indicates potential clock manipulation
         if (Math.abs(elapsedSeconds - 60) > MAX_TIME_DRIFT_SECONDS) {
             logger.error("CLOCK MANIPULATION DETECTED! Expected ~60s, got {}s. Restarting application...",
                     elapsedSeconds);
@@ -54,16 +52,15 @@ public class ClockMonitorService {
         lastCheckTime = currentTime;
     }
 
-    /**
-     * Triggers graceful application restart.
-     */
+    // Triggers graceful application restart when clock manipulation detected
+    // Uses exit code 10 to indicate restart requirement to process manager
     private void restartApplication() {
         logger.warn("Initiating application restart due to clock manipulation");
 
         new Thread(() -> {
             try {
-                Thread.sleep(1000); // Brief delay for log flush
-                System.exit(10); // Exit code 10 indicates restart required
+                Thread.sleep(1000); // Brief delay to allow log flushing
+                System.exit(10); // Special exit code for restart indication
             } catch (InterruptedException e) {
                 logger.error("Restart interrupted", e);
                 Thread.currentThread().interrupt();

@@ -8,28 +8,24 @@ import org.springframework.web.client.RestTemplate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
-/**
- * This class provides services for retrieving the current date and time from an external API.
- * It falls back to the system time if the API is unavailable.
- */
+// Service implementation for external time synchronization
+// Provides reliable current time retrieval with fallback to system clock
+// Ensures consistent timestamp generation across distributed monitoring instances
 @Service
 public class TimeService {
 
     private static final String TIME_API_URL = "https://timeapi.io/api/Time/current/zone?timeZone=America/La_Paz";
     private static final Logger logger = LoggerFactory.getLogger(TimeService.class);
 
-    /**
-     * Gets the current date and time from the API. If the API is unavailable, falls back to the system time.
-     *
-     * @return the current date and time.
-     */
+    // Retrieves current date and time from external API with system fallback
+    // Primary source is timeapi.io with La Paz timezone configuration
     public LocalDateTime getCurrentDateTime() {
         logger.debug("Fetching current date and time from TimeAPI");
         try {
             RestTemplate restTemplate = new RestTemplate();
             TimeApiResponse response = restTemplate.getForObject(TIME_API_URL, TimeApiResponse.class);
             if (response != null && response.getDateTime() != null) {
-                // Parse the date and time from the ISO 8601 format.
+                // Parse ISO 8601 formatted datetime string from API response
                 LocalDateTime apiDateTime = LocalDateTime.parse(response.getDateTime(), DateTimeFormatter.ISO_DATE_TIME);
                 logger.info("Successfully fetched date and time from TimeAPI: {}", apiDateTime);
                 return apiDateTime;
@@ -37,17 +33,14 @@ public class TimeService {
         } catch (Exception e) {
             logger.warn("Failed to fetch time from TimeAPI, using system time instead", e);
         }
-        // Fallback: Use the local system date and time.
+        // Fallback to local system time when external API is unavailable
         LocalDateTime systemDateTime = LocalDateTime.now();
         logger.info("Using system date and time: {}", systemDateTime);
         return systemDateTime;
     }
 
-    /**
-     * Checks if the current date and time were fetched from the API or the system.
-     *
-     * @return true if the date was fetched from the API, false if it's the system date.
-     */
+    // Verifies availability of external time API service
+    // Used to determine if timestamps should be considered authoritative
     public boolean isApiDateAvailable() {
         logger.debug("Checking if API date is available");
         try {
@@ -62,9 +55,7 @@ public class TimeService {
         }
     }
 
-    /**
-     * Inner class to map the API response.
-     */
+    // Internal response mapping class for time API JSON structure
     private static class TimeApiResponse {
         private String dateTime;
 

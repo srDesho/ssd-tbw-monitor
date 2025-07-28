@@ -174,21 +174,46 @@ public class TbwRecordServiceImplTest {
     }
 
     @Test
-    public void testAutoRegisterTBW_ExceptionThrown() {
-        // Arrange - Setup for exception testing
+    public void testAutoRegisterTBW_GracefulFailure_Simple() {
+        // Arrange - Setup graceful failure scenario (one SSD fails, others succeed)
         LocalDate currentDate = LocalDate.now();
         List<SSDEntity> ssdEntities = SsdProvider.ssdEntityList();
 
-        when(tbwRecordRepository.findTopByOrderByDateDesc()).thenReturn(Optional.empty());
-        when(ssdRepository.findByIsMonitored(true)).thenReturn(ssdEntities);
-        when(tbwRecordRepository.findBySsdAndDate(any(SSDEntity.class), eq(currentDate)))
-                .thenThrow(new RuntimeException("Simulated Database Exception"));
+        // No previous records exist
+        when(tbwRecordRepository.findTopByOrderByDateDesc())
+                .thenReturn(Optional.empty());
 
-        // Act & Assert - Execute and verify exception
-        assertThrows(RuntimeException.class, () -> {
-            tbwRecordService.autoRegisterTBW();
-        });
+        // Mock repository to return monitored SSDs
+        when(ssdRepository.findByIsMonitored(true))
+                .thenReturn(ssdEntities);
+
+        // Create spy to partially mock the service and control processSsdRegistration behavior
+        TbwRecordServiceImpl spyService = spy(tbwRecordService);
+
+        // First SSD: Simulate failure during processing
+        doThrow(new RuntimeException("Error en SSD 1"))
+                .when(spyService)
+                .processSsdRegistration(eq(ssdEntities.get(0)), eq(currentDate), any(LocalTime.class));
+
+        // Second SSD: Simulate successful registration
+        doReturn(true)
+                .when(spyService)
+                .processSsdRegistration(eq(ssdEntities.get(1)), eq(currentDate), any(LocalTime.class));
+
+        // Third SSD: Simulate successful registration
+        doReturn(true)
+                .when(spyService)
+                .processSsdRegistration(eq(ssdEntities.get(2)), eq(currentDate), any(LocalTime.class));
+
+        // Act - Execute the auto-registration process
+        boolean result = spyService.autoRegisterTBW();
+
+        // Assert - Verify graceful failure behavior
+        assertTrue(result); // Returns true because at least one SSD was successfully registered
+        verify(spyService, times(3))
+                .processSsdRegistration(any(SSDEntity.class), eq(currentDate), any(LocalTime.class));
     }
+
 
     @Test
     public void testGetCurrentTbwForSSD_SSDExists() {
